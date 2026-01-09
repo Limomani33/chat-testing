@@ -1,5 +1,4 @@
-import os
-import json
+import os, json
 from aiohttp import web
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -8,22 +7,15 @@ clients = set()
 users = {}
 messages = []
 
-# ======================
-# HTTP
-# ======================
 async def index(request):
     return web.FileResponse(os.path.join(BASE_DIR, "index.html"))
 
-# ======================
-# WEBSOCKET
-# ======================
 async def websocket_handler(request):
-    ws = web.WebSocketResponse(max_msg_size=20_000_000)
+    ws = web.WebSocketResponse(max_msg_size=30_000_000)
     await ws.prepare(request)
 
     clients.add(ws)
 
-    # Send history
     await ws.send_json({
         "type": "history",
         "messages": messages
@@ -46,7 +38,6 @@ async def websocket_handler(request):
                     }
 
                     messages.append(payload)
-
                     for c in clients:
                         await c.send_json(payload)
     finally:
@@ -55,9 +46,6 @@ async def websocket_handler(request):
 
     return ws
 
-# ======================
-# APP
-# ======================
 app = web.Application()
 app.router.add_get("/", index)
 app.router.add_get("/ws", websocket_handler)
