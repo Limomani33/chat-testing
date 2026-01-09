@@ -31,18 +31,9 @@ html, body {
 }
 
 .msg { margin-bottom: 10px; }
+.name { color: #ff90ff; font-weight: bold; }
 
-.name {
-  color: #ff90ff;
-  font-weight: bold;
-}
-
-img {
-  max-width: 280px;
-  border-radius: 10px;
-  margin-top: 6px;
-  box-shadow: 0 0 15px #ff5ad655;
-}
+img { max-width: 280px; border-radius: 10px; margin-top: 6px; }
 
 .audio-bubble {
   margin-top: 6px;
@@ -50,7 +41,6 @@ img {
   border-radius: 12px;
   background: #1a0f2a;
 }
-
 .audio-bubble.voice {
   background: linear-gradient(135deg, #ff5ad6, #7a3cff);
 }
@@ -62,6 +52,12 @@ img {
   align-items: center;
 }
 
+#preview {
+  padding: 6px;
+  font-size: 13px;
+  color: #ffbfff;
+}
+
 input, button {
   background: #1a0f2a;
   border: none;
@@ -70,16 +66,15 @@ input, button {
   border-radius: 6px;
 }
 
-button {
-  background: linear-gradient(135deg, #ff5ad6, #7a3cff);
-  cursor: pointer;
-}
-
 button.icon {
   width: 40px;
   height: 40px;
-  padding: 0;
   font-size: 18px;
+}
+
+#timer {
+  font-size: 13px;
+  color: #ffd1ff;
 }
 </style>
 </head>
@@ -88,10 +83,14 @@ button.icon {
 <div id="app">
   <div id="chat"></div>
 
+  <div id="preview"></div>
+
   <div id="controls">
     <button class="icon" onclick="pickImage()">🖼️</button>
     <button class="icon" onclick="pickAudio()">🔊</button>
     <button class="icon" id="voiceBtn" onclick="recordVoice()">🎤</button>
+
+    <span id="timer"></span>
 
     <input id="name" placeholder="Name">
     <input id="text" placeholder="Message">
@@ -110,7 +109,8 @@ const ws = new WebSocket(
 );
 
 let joined = false;
-const chat = document.getElementById("chat");
+let pendingFile = null;
+let pendingType = null;
 
 ws.onmessage = e => {
   const msg = JSON.parse(e.data);
@@ -122,19 +122,16 @@ function addMessage(msg) {
   const d = document.createElement("div");
   d.className = "msg";
 
-  if (msg.type === "image") {
+  if (msg.type === "image")
     d.innerHTML = `<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
-  }
-  else if (msg.type === "audio") {
+  else if (msg.type === "audio")
     d.innerHTML = `
       <span class="name">${msg.name}:</span>
       <div class="audio-bubble ${msg.voice ? "voice" : ""}">
         <audio controls src="${msg.content}"></audio>
       </div>`;
-  }
-  else {
+  else
     d.innerHTML = `<span class="name">${msg.name}:</span> ${msg.content}`;
-  }
 
   chat.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
@@ -142,49 +139,60 @@ function addMessage(msg) {
 
 function send() {
   if (!joined) {
-    ws.send(JSON.stringify({
-      type: "join",
-      name: name.value || "Anonymous"
-    }));
+    ws.send(JSON.stringify({ type:"join", name:name.value||"Anonymous" }));
     name.disabled = true;
     joined = true;
   }
 
+  if (pendingFile) {
+    const r = new FileReader();
+    r.onload = () => {
+      ws.send(JSON.stringify({
+        type: pendingType,
+        content: r.result
+      }));
+    };
+    r.readAsDataURL(pendingFile);
+    pendingFile = null;
+    preview.textContent = "";
+    return;
+  }
+
   if (text.value.trim()) {
-    ws.send(JSON.stringify({
-      type: "message",
-      content: text.value
-    }));
+    ws.send(JSON.stringify({ type:"message", content:text.value }));
     text.value = "";
   }
 }
 
-function sendFile(file, type, voice=false) {
-  if (!file) return;
-  const r = new FileReader();
-  r.onload = () => ws.send(JSON.stringify({
-    type, content: r.result, voice
-  }));
-  r.readAsDataURL(file);
-}
+img.onchange = () => {
+  pendingFile = img.files[0];
+  pendingType = "image";
+  preview.textContent = `🖼️ Image ready to send`;
+};
 
-img.onchange = () => sendFile(img.files[0], "image");
-aud.onchange = () => sendFile(aud.files[0], "audio");
+aud.onchange = () => {
+  pendingFile = aud.files[0];
+  pendingType = "audio";
+  preview.textContent = `🔊 Audio file ready to send`;
+};
 
 function pickImage(){ img.click(); }
 function pickAudio(){ aud.click(); }
 
 // ======================
-// VOICE RECORDING
+// VOICE RECORDING (1 MIN)
 // ======================
 let recording = false;
+let seconds = 0;
+let timerInt;
 
 async function recordVoice() {
   if (recording) return;
   recording = true;
+  seconds = 0;
 
-  const btn = document.getElementById("voiceBtn");
-  btn.textContent = "⬆️";
+  voiceBtn.textContent = "⬆️";
+  timer.textContent = "0:00 / 1:00";
 
   const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
   const rec = new MediaRecorder(stream);
@@ -192,14 +200,31 @@ async function recordVoice() {
 
   rec.ondataavailable = e => chunks.push(e.data);
   rec.onstop = () => {
-    sendFile(new Blob(chunks,{type:"audio/webm"}),"audio",true);
-    btn.textContent = "🎤";
+    const blob = new Blob(chunks,{type:"audio/webm"});
+    const r = new FileReader();
+    r.onload = () => {
+      ws.send(JSON.stringify({
+        type:"audio",
+        content:r.result,
+        voice:true
+      }));
+    };
+    r.readAsDataURL(blob);
+
+    voiceBtn.textContent = "🎤";
+    timer.textContent = "";
     recording = false;
     stream.getTracks().forEach(t => t.stop());
+    clearInterval(timerInt);
   };
 
   rec.start();
-  setTimeout(() => rec.stop(), 4000);
+
+  timerInt = setInterval(() => {
+    seconds++;
+    timer.textContent = `0:${String(seconds).padStart(2,"0")} / 1:00`;
+    if (seconds >= 60) rec.stop();
+  }, 1000);
 }
 </script>
 </body>
