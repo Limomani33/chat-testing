@@ -16,6 +16,7 @@ async def websocket_handler(request):
 
     clients.add(ws)
 
+    # Send chat history
     await ws.send_json({
         "type": "history",
         "messages": messages
@@ -27,28 +28,26 @@ async def websocket_handler(request):
                 data = json.loads(msg.data)
 
                 if data["type"] == "join":
-                    users[ws] = data["name"]
+                    users[ws] = data.get("name","Anonymous")
 
-                elif data["type"] in ("message", "image", "audio"):
+                elif data["type"] in ("message","image","audio"):
                     payload = {
                         "type": data["type"],
-                        "name": users.get(ws, "Anonymous"),
+                        "name": users.get(ws,"Anonymous"),
                         "content": data["content"],
                         "voice": data.get("voice", False)
                     }
-
                     messages.append(payload)
                     for c in clients:
                         await c.send_json(payload)
     finally:
         clients.remove(ws)
-        users.pop(ws, None)
-
+        users.pop(ws,None)
     return ws
 
 app = web.Application()
 app.router.add_get("/", index)
 app.router.add_get("/ws", websocket_handler)
 
-port = int(os.environ.get("PORT", 10000))
+port = int(os.environ.get("PORT",10000))
 web.run_app(app, host="0.0.0.0", port=port)
