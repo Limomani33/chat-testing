@@ -71,6 +71,7 @@ function addMessage(msg){
 
 // ===== JOIN & SEND =====
 function send(){
+  // join first
   if(!joined){
     userName=nameInput.value||"Anonymous";
     ws.send(JSON.stringify({type:"join",name:userName}));
@@ -78,16 +79,24 @@ function send(){
     joined=true;
   }
 
+  // if a pending file exists
   if(pendingFile){
     const reader=new FileReader();
     reader.onload=()=>{
-      ws.send(JSON.stringify({type:pendingType,content:reader.result,voice:pendingVoice}));
-      pendingFile=null; pendingVoice=false; pendingType=null; preview.textContent="";
+      ws.send(JSON.stringify({
+        type:pendingType,
+        content:reader.result,
+        voice:pendingVoice
+      }));
+      // reset
+      pendingFile=null; pendingType=null; pendingVoice=false;
+      preview.textContent="";
     };
     reader.readAsDataURL(pendingFile);
     return;
   }
 
+  // text messages
   if(textInput.value.trim()){
     ws.send(JSON.stringify({type:"message",content:textInput.value}));
     textInput.value="";
