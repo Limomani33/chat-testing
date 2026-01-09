@@ -37,7 +37,7 @@ html, body {
   font-weight: bold;
 }
 
-img, video {
+img {
   max-width: 280px;
   border-radius: 10px;
   margin-top: 6px;
@@ -79,6 +79,7 @@ button.icon {
   width: 40px;
   height: 40px;
   padding: 0;
+  font-size: 18px;
 }
 </style>
 </head>
@@ -89,15 +90,13 @@ button.icon {
 
   <div id="controls">
     <button class="icon" onclick="pickImage()">🖼️</button>
-    <button class="icon" onclick="pickVideo()">🎥</button>
     <button class="icon" onclick="pickAudio()">🔊</button>
-    <button class="icon" onclick="recordVoice()">🎤</button>
+    <button class="icon" id="voiceBtn" onclick="recordVoice()">🎤</button>
 
     <input id="name" placeholder="Name">
     <input id="text" placeholder="Message">
 
     <input type="file" id="img" accept="image/*" hidden>
-    <input type="file" id="vid" accept="video/*" hidden>
     <input type="file" id="aud" accept="audio/*" hidden>
 
     <button onclick="send()">Send</button>
@@ -123,21 +122,19 @@ function addMessage(msg) {
   const d = document.createElement("div");
   d.className = "msg";
 
-  if (msg.type === "image")
+  if (msg.type === "image") {
     d.innerHTML = `<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
-
-  else if (msg.type === "video")
-    d.innerHTML = `<span class="name">${msg.name}:</span><br><video controls src="${msg.content}"></video>`;
-
-  else if (msg.type === "audio")
+  }
+  else if (msg.type === "audio") {
     d.innerHTML = `
       <span class="name">${msg.name}:</span>
       <div class="audio-bubble ${msg.voice ? "voice" : ""}">
         <audio controls src="${msg.content}"></audio>
       </div>`;
-
-  else
+  }
+  else {
     d.innerHTML = `<span class="name">${msg.name}:</span> ${msg.content}`;
+  }
 
   chat.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
@@ -145,35 +142,50 @@ function addMessage(msg) {
 
 function send() {
   if (!joined) {
-    ws.send(JSON.stringify({ type:"join", name:name.value||"Anonymous" }));
+    ws.send(JSON.stringify({
+      type: "join",
+      name: name.value || "Anonymous"
+    }));
     name.disabled = true;
     joined = true;
   }
 
   if (text.value.trim()) {
-    ws.send(JSON.stringify({ type:"message", content:text.value }));
+    ws.send(JSON.stringify({
+      type: "message",
+      content: text.value
+    }));
     text.value = "";
   }
 }
 
 function sendFile(file, type, voice=false) {
+  if (!file) return;
   const r = new FileReader();
   r.onload = () => ws.send(JSON.stringify({
-    type, content:r.result, voice
+    type, content: r.result, voice
   }));
   r.readAsDataURL(file);
 }
 
 img.onchange = () => sendFile(img.files[0], "image");
-vid.onchange = () => sendFile(vid.files[0], "video");
 aud.onchange = () => sendFile(aud.files[0], "audio");
 
 function pickImage(){ img.click(); }
-function pickVideo(){ vid.click(); }
 function pickAudio(){ aud.click(); }
 
-// voice record (4s)
+// ======================
+// VOICE RECORDING
+// ======================
+let recording = false;
+
 async function recordVoice() {
+  if (recording) return;
+  recording = true;
+
+  const btn = document.getElementById("voiceBtn");
+  btn.textContent = "⬆️";
+
   const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
   const rec = new MediaRecorder(stream);
   const chunks = [];
@@ -181,10 +193,13 @@ async function recordVoice() {
   rec.ondataavailable = e => chunks.push(e.data);
   rec.onstop = () => {
     sendFile(new Blob(chunks,{type:"audio/webm"}),"audio",true);
+    btn.textContent = "🎤";
+    recording = false;
+    stream.getTracks().forEach(t => t.stop());
   };
 
   rec.start();
-  setTimeout(()=>rec.stop(),4000);
+  setTimeout(() => rec.stop(), 4000);
 }
 </script>
 </body>
