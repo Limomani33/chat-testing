@@ -3,258 +3,134 @@
 <head>
 <meta charset="UTF-8">
 <title>Soapy Chat</title>
-
 <style>
-html, body {
-  height: 100%;
-  margin: 0;
-  font-family: system-ui;
-  background: radial-gradient(circle at top, #ff5ad6, #502070, #0b0314);
-  color: white;
-}
-
-#app {
-  width: 720px;
-  height: 85%;
-  margin: 40px auto;
-  background: rgba(8,8,20,.92);
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 0 50px #ff5ad688;
-}
-
-#chat {
-  flex: 1;
-  padding: 12px;
-  overflow-y: auto;
-}
-
-.msg { margin-bottom: 10px; }
-
-.name {
-  color: #ff90ff;
-  font-weight: bold;
-}
-
-/* ==== MEDIA ==== */
-img {
-  max-width: 280px;
-  border-radius: 10px;
-  margin-top: 6px;
-  box-shadow: 0 0 15px #ff5ad655;
-}
-
-audio {
-  width: 240px;
-}
-
-/* ==== AUDIO ==== */
-.audio-bubble {
-  margin-top: 6px;
-  padding: 8px;
-  border-radius: 14px;
-  background: #1a0f2a;
-  box-shadow: inset 0 0 10px #000;
-}
-
-.audio-bubble.voice {
-  background: linear-gradient(135deg, #ff5ad6, #7a3cff);
-}
-
-/* ==== CONTROLS ==== */
-#controls {
-  display: flex;
-  gap: 6px;
-  padding: 10px;
-  align-items: center;
-}
-
-button, input {
-  background: #1a0f2a;
-  border: 1px solid #ff5ad688;
-  color: white;
-  padding: 8px;
-  border-radius: 8px;
-}
-
-button {
-  background: linear-gradient(135deg, #ff5ad6, #7a3cff);
-  box-shadow: 0 0 12px #ff5ad666;
-  cursor: pointer;
-}
-
-button.icon {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  font-size: 18px;
-}
-
-#preview {
-  padding: 6px 10px;
-  font-size: 13px;
-  color: #ffd1ff;
-}
-
-#timer {
-  font-size: 13px;
-  color: #ffd1ff;
-}
+html,body{height:100%;margin:0;font-family:system-ui;background:radial-gradient(circle at top,#ff5ad6,#502070,#0b0314);color:white;}
+#app{width:720px;height:85%;margin:40px auto;background:rgba(8,8,20,.92);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 0 50px #ff5ad688;}
+#chat{flex:1;padding:12px;overflow-y:auto;}
+.msg{margin-bottom:10px;}
+.name{color:#ff90ff;font-weight:bold;}
+img{max-width:280px;border-radius:10px;margin-top:6px;box-shadow:0 0 15px #ff5ad655;}
+audio{width:240px;}
+.audio-bubble{margin-top:6px;padding:8px;border-radius:14px;background:#1a0f2a;box-shadow:inset 0 0 10px #000;}
+.audio-bubble.voice{background:linear-gradient(135deg,#ff5ad6,#7a3cff);}
+#controls{display:flex;gap:6px;padding:10px;align-items:center;}
+#preview{padding:6px 10px;font-size:13px;color:#ffd1ff;}
+#timer{font-size:13px;color:#ffd1ff;}
+input,button{background:#1a0f2a;border:1px solid #ff5ad688;color:white;padding:8px;border-radius:8px;}
+button{background:linear-gradient(135deg,#ff5ad6,#7a3cff);box-shadow:0 0 12px #ff5ad666;cursor:pointer;}
+button.icon{width:40px;height:40px;padding:0;font-size:18px;}
 </style>
 </head>
-
 <body>
 <div id="app">
   <div id="chat"></div>
-
   <div id="preview"></div>
-
   <div id="controls">
     <button class="icon" onclick="pickImage()">🖼️</button>
     <button class="icon" onclick="pickAudio()">🔊</button>
     <button class="icon" id="voiceBtn" onclick="recordVoice()">🎤</button>
-
     <span id="timer"></span>
-
     <input id="name" placeholder="Name">
     <input id="text" placeholder="Message">
-
     <input type="file" id="img" accept="image/*" hidden>
     <input type="file" id="aud" accept="audio/*" hidden>
-
     <button onclick="send()">Send</button>
   </div>
 </div>
 
 <script>
-const ws = new WebSocket(
-  (location.protocol === "https:" ? "wss://" : "ws://") +
-  location.host + "/ws"
-);
+const ws = new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
 
-let joined = false;
-let pendingFile = null;
-let pendingType = null;
-let pendingVoice = false;
+let joined=false;
+let userName="";
+let pendingFile=null;
+let pendingType=null;
+let pendingVoice=false;
 
-// ===== MESSAGE HANDLING =====
-ws.onmessage = e => {
-  const msg = JSON.parse(e.data);
-  if (msg.type === "history") msg.messages.forEach(addMessage);
+const chat=document.getElementById("chat");
+const preview=document.getElementById("preview");
+const timer=document.getElementById("timer");
+const nameInput=document.getElementById("name");
+const textInput=document.getElementById("text");
+const voiceBtn=document.getElementById("voiceBtn");
+
+ws.onmessage=e=>{
+  const msg=JSON.parse(e.data);
+  if(msg.type==="history") msg.messages.forEach(addMessage);
   else addMessage(msg);
 };
 
-function addMessage(msg) {
-  const d = document.createElement("div");
-  d.className = "msg";
-
-  if (msg.type === "image") {
-    d.innerHTML = `<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
-  }
-  else if (msg.type === "audio") {
-    d.innerHTML = `
-      <span class="name">${msg.name}:</span>
-      <div class="audio-bubble ${msg.voice ? "voice" : ""}">
-        <audio controls src="${msg.content}"></audio>
-      </div>`;
-  }
-  else {
-    d.innerHTML = `<span class="name">${msg.name}:</span> ${msg.content}`;
-  }
-
+function addMessage(msg){
+  const d=document.createElement("div"); d.className="msg";
+  if(msg.type==="image") d.innerHTML=`<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
+  else if(msg.type==="audio") d.innerHTML=`<span class="name">${msg.name}:</span><div class="audio-bubble ${msg.voice?"voice":""}"><audio controls src="${msg.content}"></audio></div>`;
+  else d.innerHTML=`<span class="name">${msg.name}:</span> ${msg.content}`;
   chat.appendChild(d);
-  chat.scrollTop = chat.scrollHeight;
+  chat.scrollTop=chat.scrollHeight;
 }
 
-// ===== SEND =====
-function send() {
-  if (!joined) {
-    ws.send(JSON.stringify({ type:"join", name:name.value||"Anonymous" }));
-    name.disabled = true;
-    joined = true;
+// ===== JOIN & SEND =====
+function send(){
+  if(!joined){
+    userName=nameInput.value||"Anonymous";
+    ws.send(JSON.stringify({type:"join",name:userName}));
+    nameInput.disabled=true;
+    joined=true;
   }
 
-  if (pendingFile) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      ws.send(JSON.stringify({
-        type: pendingType,
-        content: reader.result,
-        voice: pendingVoice
-      }));
-      pendingFile = null;
-      pendingVoice = false;
-      preview.textContent = "";
+  if(pendingFile){
+    const reader=new FileReader();
+    reader.onload=()=>{
+      ws.send(JSON.stringify({type:pendingType,content:reader.result,voice:pendingVoice}));
+      pendingFile=null; pendingVoice=false; pendingType=null; preview.textContent="";
     };
     reader.readAsDataURL(pendingFile);
     return;
   }
 
-  if (text.value.trim()) {
-    ws.send(JSON.stringify({ type:"message", content:text.value }));
-    text.value = "";
+  if(textInput.value.trim()){
+    ws.send(JSON.stringify({type:"message",content:textInput.value}));
+    textInput.value="";
   }
 }
 
 // ===== FILE PICKERS =====
-img.onchange = () => {
-  pendingFile = img.files[0];
-  pendingType = "image";
-  pendingVoice = false;
-  preview.textContent = "🖼️ Image ready to send";
-};
+const img=document.getElementById("img");
+const aud=document.getElementById("aud");
 
-aud.onchange = () => {
-  pendingFile = aud.files[0];
-  pendingType = "audio";
-  pendingVoice = false;
-  preview.textContent = "🔊 Audio file ready to send";
-};
+img.onchange=()=>{pendingFile=img.files[0]; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
+aud.onchange=()=>{pendingFile=aud.files[0]; pendingType="audio"; pendingVoice=false; preview.textContent="🔊 Audio file ready to send";};
 
-function pickImage(){ img.click(); }
-function pickAudio(){ aud.click(); }
+function pickImage(){img.click();}
+function pickAudio(){aud.click();}
 
-// ===== VOICE RECORDING (1 MIN) =====
-let recording = false;
-let seconds = 0;
-let timerInt;
+// ===== VOICE RECORDING =====
+let recording=false,seconds=0,timerInt;
+async function recordVoice(){
+  if(recording) return;
+  recording=true; seconds=0;
+  voiceBtn.textContent="⬆️"; timer.textContent="0:00 / 1:00";
 
-async function recordVoice() {
-  if (recording) return;
-  recording = true;
-  seconds = 0;
+  const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  const rec=new MediaRecorder(stream); const chunks=[];
+  rec.ondataavailable=e=>chunks.push(e.data);
 
-  voiceBtn.textContent = "⬆️";
-  timer.textContent = "0:00 / 1:00";
+  rec.onstop=()=>{
+    pendingFile=new Blob(chunks,{type:"audio/webm"});
+    pendingType="audio"; pendingVoice=true;
+    preview.textContent="🎤 Voice message ready to send";
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
-  const rec = new MediaRecorder(stream);
-  const chunks = [];
-
-  rec.ondataavailable = e => chunks.push(e.data);
-
-  rec.onstop = () => {
-    const blob = new Blob(chunks, { type:"audio/webm" });
-    pendingFile = blob;
-    pendingType = "audio";
-    pendingVoice = true;
-    preview.textContent = "🎤 Voice message ready to send";
-
-    voiceBtn.textContent = "🎤";
-    timer.textContent = "";
-    recording = false;
-    stream.getTracks().forEach(t => t.stop());
-    clearInterval(timerInt);
+    voiceBtn.textContent="🎤"; timer.textContent="";
+    recording=false; clearInterval(timerInt);
+    stream.getTracks().forEach(t=>t.stop());
   };
 
   rec.start();
-
-  timerInt = setInterval(() => {
+  timerInt=setInterval(()=>{
     seconds++;
-    timer.textContent = `0:${String(seconds).padStart(2,"0")} / 1:00`;
-    if (seconds >= 60) rec.stop();
-  }, 1000);
+    timer.textContent=`0:${String(seconds).padStart(2,"0")} / 1:00`;
+    if(seconds>=60) rec.stop();
+  },1000);
 }
 </script>
 </body>
