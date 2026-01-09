@@ -31,20 +31,38 @@ html, body {
 }
 
 .msg { margin-bottom: 10px; }
-.name { color: #ff90ff; font-weight: bold; }
 
-img { max-width: 280px; border-radius: 10px; margin-top: 6px; }
+.name {
+  color: #ff90ff;
+  font-weight: bold;
+}
 
+/* ==== MEDIA ==== */
+img {
+  max-width: 280px;
+  border-radius: 10px;
+  margin-top: 6px;
+  box-shadow: 0 0 15px #ff5ad655;
+}
+
+audio {
+  width: 240px;
+}
+
+/* ==== AUDIO ==== */
 .audio-bubble {
   margin-top: 6px;
-  padding: 6px;
-  border-radius: 12px;
+  padding: 8px;
+  border-radius: 14px;
   background: #1a0f2a;
+  box-shadow: inset 0 0 10px #000;
 }
+
 .audio-bubble.voice {
   background: linear-gradient(135deg, #ff5ad6, #7a3cff);
 }
 
+/* ==== CONTROLS ==== */
 #controls {
   display: flex;
   gap: 6px;
@@ -52,24 +70,31 @@ img { max-width: 280px; border-radius: 10px; margin-top: 6px; }
   align-items: center;
 }
 
-#preview {
-  padding: 6px;
-  font-size: 13px;
-  color: #ffbfff;
-}
-
-input, button {
+button, input {
   background: #1a0f2a;
-  border: none;
+  border: 1px solid #ff5ad688;
   color: white;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: 8px;
+}
+
+button {
+  background: linear-gradient(135deg, #ff5ad6, #7a3cff);
+  box-shadow: 0 0 12px #ff5ad666;
+  cursor: pointer;
 }
 
 button.icon {
   width: 40px;
   height: 40px;
+  padding: 0;
   font-size: 18px;
+}
+
+#preview {
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #ffd1ff;
 }
 
 #timer {
@@ -111,7 +136,9 @@ const ws = new WebSocket(
 let joined = false;
 let pendingFile = null;
 let pendingType = null;
+let pendingVoice = false;
 
+// ===== MESSAGE HANDLING =====
 ws.onmessage = e => {
   const msg = JSON.parse(e.data);
   if (msg.type === "history") msg.messages.forEach(addMessage);
@@ -122,21 +149,25 @@ function addMessage(msg) {
   const d = document.createElement("div");
   d.className = "msg";
 
-  if (msg.type === "image")
+  if (msg.type === "image") {
     d.innerHTML = `<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
-  else if (msg.type === "audio")
+  }
+  else if (msg.type === "audio") {
     d.innerHTML = `
       <span class="name">${msg.name}:</span>
       <div class="audio-bubble ${msg.voice ? "voice" : ""}">
         <audio controls src="${msg.content}"></audio>
       </div>`;
-  else
+  }
+  else {
     d.innerHTML = `<span class="name">${msg.name}:</span> ${msg.content}`;
+  }
 
   chat.appendChild(d);
   chat.scrollTop = chat.scrollHeight;
 }
 
+// ===== SEND =====
 function send() {
   if (!joined) {
     ws.send(JSON.stringify({ type:"join", name:name.value||"Anonymous" }));
@@ -145,16 +176,18 @@ function send() {
   }
 
   if (pendingFile) {
-    const r = new FileReader();
-    r.onload = () => {
+    const reader = new FileReader();
+    reader.onload = () => {
       ws.send(JSON.stringify({
         type: pendingType,
-        content: r.result
+        content: reader.result,
+        voice: pendingVoice
       }));
+      pendingFile = null;
+      pendingVoice = false;
+      preview.textContent = "";
     };
-    r.readAsDataURL(pendingFile);
-    pendingFile = null;
-    preview.textContent = "";
+    reader.readAsDataURL(pendingFile);
     return;
   }
 
@@ -164,24 +197,25 @@ function send() {
   }
 }
 
+// ===== FILE PICKERS =====
 img.onchange = () => {
   pendingFile = img.files[0];
   pendingType = "image";
-  preview.textContent = `🖼️ Image ready to send`;
+  pendingVoice = false;
+  preview.textContent = "🖼️ Image ready to send";
 };
 
 aud.onchange = () => {
   pendingFile = aud.files[0];
   pendingType = "audio";
-  preview.textContent = `🔊 Audio file ready to send`;
+  pendingVoice = false;
+  preview.textContent = "🔊 Audio file ready to send";
 };
 
 function pickImage(){ img.click(); }
 function pickAudio(){ aud.click(); }
 
-// ======================
-// VOICE RECORDING (1 MIN)
-// ======================
+// ===== VOICE RECORDING (1 MIN) =====
 let recording = false;
 let seconds = 0;
 let timerInt;
@@ -199,17 +233,13 @@ async function recordVoice() {
   const chunks = [];
 
   rec.ondataavailable = e => chunks.push(e.data);
+
   rec.onstop = () => {
-    const blob = new Blob(chunks,{type:"audio/webm"});
-    const r = new FileReader();
-    r.onload = () => {
-      ws.send(JSON.stringify({
-        type:"audio",
-        content:r.result,
-        voice:true
-      }));
-    };
-    r.readAsDataURL(blob);
+    const blob = new Blob(chunks, { type:"audio/webm" });
+    pendingFile = blob;
+    pendingType = "audio";
+    pendingVoice = true;
+    preview.textContent = "🎤 Voice message ready to send";
 
     voiceBtn.textContent = "🎤";
     timer.textContent = "";
