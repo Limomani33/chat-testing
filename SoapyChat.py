@@ -18,12 +18,12 @@ async def index(request):
 # WEBSOCKET
 # ======================
 async def websocket_handler(request):
-    ws = web.WebSocketResponse(max_msg_size=50_000_000)
+    ws = web.WebSocketResponse(max_msg_size=20_000_000)
     await ws.prepare(request)
 
     clients.add(ws)
 
-    # send history
+    # Send history
     await ws.send_json({
         "type": "history",
         "messages": messages
@@ -37,7 +37,7 @@ async def websocket_handler(request):
                 if data["type"] == "join":
                     users[ws] = data["name"]
 
-                elif data["type"] in ("message", "image", "video", "audio"):
+                elif data["type"] in ("message", "image", "audio"):
                     payload = {
                         "type": data["type"],
                         "name": users.get(ws, "Anonymous"),
@@ -47,8 +47,8 @@ async def websocket_handler(request):
 
                     messages.append(payload)
 
-                    for client in clients:
-                        await client.send_json(payload)
+                    for c in clients:
+                        await c.send_json(payload)
     finally:
         clients.remove(ws)
         users.pop(ws, None)
