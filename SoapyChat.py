@@ -2,10 +2,11 @@ import os
 import json
 from aiohttp import web
 
-# ======================
-# PATH
-# ======================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+clients = set()
+users = {}
+messages = []
 
 # ======================
 # HTTP
@@ -14,22 +15,15 @@ async def index(request):
     return web.FileResponse(os.path.join(BASE_DIR, "index.html"))
 
 # ======================
-# CHAT STATE (RESET ON RESTART)
-# ======================
-clients = set()
-users = {}
-messages = []
-
-# ======================
 # WEBSOCKET
 # ======================
 async def websocket_handler(request):
-    ws = web.WebSocketResponse(max_msg_size=25_000_000)
+    ws = web.WebSocketResponse(max_msg_size=50_000_000)
     await ws.prepare(request)
 
     clients.add(ws)
 
-    # Send history
+    # send history
     await ws.send_json({
         "type": "history",
         "messages": messages
@@ -43,17 +37,18 @@ async def websocket_handler(request):
                 if data["type"] == "join":
                     users[ws] = data["name"]
 
-                elif data["type"] in ("message", "image", "audio", "video"):
+                elif data["type"] in ("message", "image", "video", "audio"):
                     payload = {
                         "type": data["type"],
                         "name": users.get(ws, "Anonymous"),
-                        "content": data["content"]
+                        "content": data["content"],
+                        "voice": data.get("voice", False)
                     }
+
                     messages.append(payload)
 
                     for client in clients:
                         await client.send_json(payload)
-
     finally:
         clients.remove(ws)
         users.pop(ws, None)
@@ -67,7 +62,5 @@ app = web.Application()
 app.router.add_get("/", index)
 app.router.add_get("/ws", websocket_handler)
 
-port = int(os.environ.get("PORT", 8000))
-print(f"🫧 Soapy Chat running on port {port}")
-
+port = int(os.environ.get("PORT", 10000))
 web.run_app(app, host="0.0.0.0", port=port)
