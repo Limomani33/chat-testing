@@ -5,62 +5,72 @@
 <title>Soapy Chat</title>
 <style>
 html,body{height:100%;margin:0;font-family:system-ui;background:radial-gradient(circle at top,#ff5ad6,#502070,#0b0314);color:white;}
-#app{width:720px;height:85%;margin:40px auto;background:rgba(8,8,20,.92);border-radius:14px;display:flex;flex-direction:column;box-shadow:0 0 50px #ff5ad688;}
-#chat{flex:1;padding:12px;overflow-y:auto;}
+#app{width:720px;margin:20px auto;background:rgba(8,8,20,.92);border-radius:14px;box-shadow:0 0 50px #ff5ad688;padding:10px;display:flex;flex-direction:column;gap:10px;}
+#topbar{display:flex;align-items:center;justify-content:space-between;}
+#connection{font-size:20px;font-weight:bold;transition:opacity 1s, color 0.5s;}
+#controls{display:flex;gap:6px;align-items:center;}
+#chat{flex:1;padding:12px;overflow-y:auto;height:500px;background:rgba(0,0,0,0.2);border-radius:10px;}
 .msg{margin-bottom:10px;}
 .name{color:#ff90ff;font-weight:bold;}
 img{max-width:280px;border-radius:10px;margin-top:6px;box-shadow:0 0 15px #ff5ad655;}
-audio{width:240px;}
-.audio-bubble{margin-top:6px;padding:8px;border-radius:14px;background:#1a0f2a;box-shadow:inset 0 0 10px #000;}
-.audio-bubble.voice{background:linear-gradient(135deg,#ff5ad6,#7a3cff);}
-#controls{display:flex;gap:6px;padding:10px;align-items:center;}
-#preview{padding:6px 10px;font-size:13px;color:#ffd1ff;}
-#timer{font-size:13px;color:#ffd1ff;}
 input,button{background:#1a0f2a;border:1px solid #ff5ad688;color:white;padding:8px;border-radius:8px;}
 button{background:linear-gradient(135deg,#ff5ad6,#7a3cff);box-shadow:0 0 12px #ff5ad666;cursor:pointer;}
 button.icon{width:40px;height:40px;padding:0;font-size:18px;}
+#preview{padding:4px 8px;font-size:13px;color:#ffd1ff;}
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="chat"></div>
-  <div id="preview"></div>
+  <div id="topbar">
+    <div id="connection">Connection ✅</div>
+  </div>
+
   <div id="controls">
     <button class="icon" onclick="pickImage()">🖼️</button>
-    <button class="icon" id="voiceBtn" onclick="toggleVoice()">🎤</button>
-    <span id="timer"></span>
     <input id="name" placeholder="Name">
     <input id="text" placeholder="Message">
     <input type="file" id="img" accept="image/*" hidden>
     <button onclick="send()">Send</button>
   </div>
+
+  <div id="preview"></div>
+  <div id="chat"></div>
 </div>
 
 <script>
 const chat=document.getElementById("chat");
 const preview=document.getElementById("preview");
-const timer=document.getElementById("timer");
+const connectionEl=document.getElementById("connection");
 const nameInput=document.getElementById("name");
 const textInput=document.getElementById("text");
 const imgInput=document.getElementById("img");
-const voiceBtn=document.getElementById("voiceBtn");
 
 let ws;
 let joined=false;
 let userName="";
 let pendingFile=null;
 let pendingType=null;
-let pendingVoice=false;
 
-let recording=false,seconds=0,timerInt,recorder=null;
-
-// --- WebSocket ---
+// ===== WEBSOCKET =====
 function initWS(){
   ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    connectionEl.textContent = "Connection ✅";
+    connectionEl.style.color = "#00ff00";
+    connectionEl.style.opacity = 1;
+  };
+
   ws.onmessage=e=>{
     const msg=JSON.parse(e.data);
     if(msg.type==="history") msg.messages.forEach(addMessage);
     else addMessage(msg);
+  };
+
+  ws.onclose = () => {
+    connectionEl.textContent = "🚫 (Reload this page)";
+    connectionEl.style.color = "#ff0000";
+    connectionEl.style.opacity = 1;
   };
 }
 initWS();
@@ -68,7 +78,6 @@ initWS();
 function addMessage(msg){
   const d=document.createElement("div"); d.className="msg";
   if(msg.type==="image") d.innerHTML=`<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
-  else if(msg.type==="audio") d.innerHTML=`<span class="name">${msg.name}:</span><div class="audio-bubble ${msg.voice?"voice":""}"><audio controls src="${msg.content}"></audio></div>`;
   else d.innerHTML=`<span class="name">${msg.name}:</span> ${msg.content}`;
   chat.appendChild(d); chat.scrollTop=chat.scrollHeight;
 }
@@ -84,19 +93,9 @@ function send(){
   }
 
   if(pendingFile){
-    if(pendingFile instanceof Blob){
-      const reader=new FileReader();
-      reader.onloadend=()=>{
-        ws.send(JSON.stringify({type:pendingType, content:reader.result, voice:pendingVoice}));
-        pendingFile=null; pendingType=null; pendingVoice=false;
-        preview.textContent="";
-      };
-      reader.readAsDataURL(pendingFile);
-    } else {
-      ws.send(JSON.stringify({type:pendingType, content:pendingFile, voice:pendingVoice}));
-      pendingFile=null; pendingType=null; pendingVoice=false;
-      preview.textContent="";
-    }
+    ws.send(JSON.stringify({type:pendingType, content:pendingFile}));
+    pendingFile=null; pendingType=null;
+    preview.textContent="";
     return;
   }
 
@@ -110,41 +109,35 @@ function send(){
 imgInput.onchange=()=>{
   const file=imgInput.files[0];
   const reader=new FileReader();
-  reader.onload=()=>{pendingFile=reader.result; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
+  reader.onload=()=>{pendingFile=reader.result; pendingType="image"; preview.textContent="🖼️ Image ready to send";};
   reader.readAsDataURL(file);
 };
 function pickImage(){imgInput.click();}
 
-// ===== VOICE RECORDING =====
-async function toggleVoice(){
-  if(!recording){
-    recording=true; seconds=0; voiceBtn.textContent="⬆️"; timer.textContent="0:00 / 1:00";
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    recorder=new MediaRecorder(stream, { mimeType: "audio/ogg" }); // FIXED MIME
-    const chunks=[];
-    recorder.ondataavailable=e=>chunks.push(e.data);
-    recorder.onstop=()=>{
-      const blob=new Blob(chunks,{type:"audio/ogg"}); // FIXED MIME
-      const reader=new FileReader();
-      reader.onloadend=()=>{
-        pendingFile=reader.result; pendingType="audio"; pendingVoice=true;
-        preview.textContent="🎤 Voice ready to send";
-        voiceBtn.textContent="🎤"; timer.textContent=""; recording=false;
-      };
-      reader.readAsDataURL(blob); // creates proper playable data URL
-      stream.getTracks().forEach(t=>t.stop());
-      clearInterval(timerInt);
-    };
-    recorder.start();
-    timerInt=setInterval(()=>{
-      seconds++;
-      timer.textContent=`0:${String(seconds).padStart(2,"0")} / 1:00`;
-      if(seconds>=60) recorder.stop();
-    },1000);
-  } else {
-    recorder.stop();
-  }
+// ===== CONNECTION STATUS RANDOM WARNING =====
+function randomWarning(){
+  const interval=Math.random()*10000+5000; // 5-15s
+  setTimeout(()=>{
+    if(ws && ws.readyState===WebSocket.OPEN){
+      // fade in ⚠️
+      connectionEl.textContent="⚠️";
+      connectionEl.style.color="#ffff00";
+      connectionEl.style.opacity=0;
+      setTimeout(()=>{
+        connectionEl.style.opacity=1;
+      }, 100); // quick fade in
+
+      const duration = Math.random()*3000+3000; // 3-6s
+      setTimeout(()=>{
+        connectionEl.textContent="Connection ✅";
+        connectionEl.style.color="#00ff00";
+        connectionEl.style.opacity=1;
+      }, duration);
+    }
+    randomWarning();
+  }, interval);
 }
+randomWarning();
 </script>
 </body>
 </html>
