@@ -1,112 +1,65 @@
-import asyncio
-import aiohttp
-from aiohttp import web
-import json
-import socket
 import os
+import json
+from aiohttp import web
 
 # ======================
-# SETTINGS
+# Absolute path to current folder
 # ======================
-HTTP_PORT = int(os.environ.get("PORT", 8000))  # Render sets PORT env
-WS_PATH = "/ws"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ======================
-# LAN IP
+# HTTP: serve index.html
 # ======================
-def get_lan_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-    except Exception:
-        ip = "127.0.0.1"
-    finally:
-        s.close()
-    return ip
-
-LAN_IP = get_lan_ip()
+async def index(request):
+    # Always serve index.html from the same folder as server.py
+    return web.FileResponse(os.path.join(BASE_DIR, "index.html"))
 
 # ======================
-# STORAGE
+# WEBSOCKET
 # ======================
 clients = set()
 users = {}
 messages = []
 
-# ======================
-# HTTP APP
-# ======================
-app = web.Application()
-routes = web.RouteTableDef()
-
-@routes.get('/')
-async def index(request):
-    return web.FileResponse('index.html')
-
-# Serve other static files if needed
-@routes.get('/{filename}')
-async def static_files(request):
-    filename = request.match_info['filename']
-    if os.path.exists(filename):
-        return web.FileResponse(filename)
-    return web.Response(status=404, text="Not Found")
-
-app.add_routes(routes)
-
-# ======================
-# WEBSOCKET
-# ======================
-async def ws_handler(request):
-    ws = web.WebSocketResponse()
+async def websocket_handler(request):
+    ws = web.WebSocketResponse(max_msg_size=10_000_000)
     await ws.prepare(request)
     clients.add(ws)
 
-    # Send history
-    await ws.send_json({"type":"history","messages":messages})
+    # Send chat history
+    await ws.send_json({
+        "type": "history",
+        "messages": messages
+    })
 
     try:
         async for msg in ws:
-            if msg.type != aiohttp.WSMsgType.TEXT:
-                continue
-            data = json.loads(msg.data)
-
-            if data["type"] == "join":
-                users[ws] = data.get("name","Anonymous")
-
-            elif data["type"] in ("message","image","audio"):
-                payload = {
-                    "type": data["type"],
-                    "name": users.get(ws,"Anonymous"),
-                    "content": data["content"],
-                    "voice": data.get("voice", False)
-                }
-                messages.append(payload)
-                # Broadcast
-                for client in clients:
-                    await client.send_json(payload)
-
+            if msg.type == web.WSMsgType.TEXT:
+                data = json.loads(msg.data)
+                if data["type"] == "join":
+                    users[ws] = data["name"]
+                elif data["type"] in ("message", "image"):
+                    payload = {
+                        "type": data["type"],
+                        "name": users.get(ws, "Anonymous"),
+                        "content": data["content"]
+                    }
+                    messages.append(payload)
+                    for client in clients:
+                        await client.send_json(payload)
     finally:
         clients.remove(ws)
         users.pop(ws, None)
 
     return ws
 
-app.router.add_get(WS_PATH, ws_handler)
-
 # ======================
-# MAIN
+# APP SETUP
 # ======================
-async def main():
-    print(f"\n🫧 Soapy Chat running!")
-    print(f"\n👉 Open this link on other devices:\n")
-    print(f"   http://{LAN_IP}:{HTTP_PORT}\n")
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', HTTP_PORT)
-    await site.start()
-    # Run forever
-    while True:
-        await asyncio.sleep(3600)
+app = web.Application()
+app.router.add_get("/", index)
+app.router.add_get("/ws", websocket_handler)
 
-asyncio.run(main())
+# Render sets the port in $PORT
+port = int(os.environ.get("PORT", 8000))
+web.run_app(app, host="0.0.0.0", port=port)
