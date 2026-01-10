@@ -54,7 +54,7 @@ let pendingVoice=false;
 
 let recording=false,seconds=0,timerInt,recorder=null;
 
-// --- Initialize WebSocket ---
+// --- WebSocket ---
 function initWS(){
   ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
   ws.onmessage=e=>{
@@ -62,7 +62,6 @@ function initWS(){
     if(msg.type==="history") msg.messages.forEach(addMessage);
     else addMessage(msg);
   };
-  ws.onopen=()=>{console.log("WebSocket connected");};
 }
 initWS();
 
@@ -77,7 +76,6 @@ function addMessage(msg){
 // ===== SEND =====
 function send(){
   if(!ws || ws.readyState!==WebSocket.OPEN) return alert("WebSocket not connected yet!");
-
   if(!joined){
     userName=nameInput.value||"Anonymous";
     ws.send(JSON.stringify({type:"join", name:userName}));
@@ -85,11 +83,10 @@ function send(){
     joined=true;
   }
 
-  // Send pending file (voice or image)
   if(pendingFile){
     if(pendingFile instanceof Blob){
       const reader=new FileReader();
-      reader.onload=()=>{
+      reader.onloadend=()=>{
         ws.send(JSON.stringify({type:pendingType, content:reader.result, voice:pendingVoice}));
         pendingFile=null; pendingType=null; pendingVoice=false;
         preview.textContent="";
@@ -103,14 +100,13 @@ function send(){
     return;
   }
 
-  // Send text
   if(textInput.value.trim()){
     ws.send(JSON.stringify({type:"message", content:textInput.value}));
     textInput.value="";
   }
 }
 
-// ===== IMAGE PICKER =====
+// ===== IMAGE =====
 imgInput.onchange=()=>{
   const file=imgInput.files[0];
   const reader=new FileReader();
@@ -129,12 +125,12 @@ async function toggleVoice(){
     recorder.onstop=()=>{
       const blob=new Blob(chunks,{type:"audio/webm"});
       const reader=new FileReader();
-      reader.onload=()=>{
+      reader.onloadend=()=>{
         pendingFile=reader.result; pendingType="audio"; pendingVoice=true;
-        preview.textContent="🎤 Voice ready to send"; 
+        preview.textContent="🎤 Voice ready to send";
         voiceBtn.textContent="🎤"; timer.textContent=""; recording=false;
       };
-      reader.readAsDataURL(blob);
+      reader.readAsDataURL(blob); // ensures proper base64 data URL
       stream.getTracks().forEach(t=>t.stop());
       clearInterval(timerInt);
     };
