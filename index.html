@@ -120,6 +120,24 @@ let userName="";
 let pendingFile=null;
 let pendingType=null;
 
+// ===== CONNECTION TIMER (14:30) =====
+let countdown = 870; // 14m30s in seconds
+let countdownInterval;
+
+function startCountdown(){
+  clearInterval(countdownInterval);
+  countdownInterval = setInterval(()=>{
+    countdown--;
+    if(countdown<=0){
+      clearInterval(countdownInterval);
+      connectionEl.textContent="Connection: 🚫 (Reload this page)";
+      connectionEl.style.color="#ff0000";
+      connectionEl.style.opacity=1;
+      connectionEl.style.animation="";
+    }
+  },1000);
+}
+
 // ===== WEBSOCKET =====
 function initWS(){
   ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
@@ -129,6 +147,8 @@ function initWS(){
     connectionEl.style.color="#00ff00";
     connectionEl.style.opacity=1;
     connectionEl.style.animation="";
+    countdown = 870; // reset countdown on connect
+    startCountdown();
   };
 
   ws.onmessage=e=>{
@@ -138,6 +158,7 @@ function initWS(){
   };
 
   ws.onclose = () => {
+    clearInterval(countdownInterval);
     connectionEl.textContent = "Connection: 🚫 (Reload this page)";
     connectionEl.style.color="#ff0000";
     connectionEl.style.opacity=1;
@@ -163,6 +184,9 @@ function send(){
     nameInput.disabled=true;
     joined=true;
   }
+
+  // reset countdown on send
+  countdown = 870;
 
   if(pendingFile){
     ws.send(JSON.stringify({type:pendingType, content:pendingFile}));
@@ -197,9 +221,11 @@ function randomWarning(){
 
       const duration=Math.random()*3000+3000; // 3-6s pulse
       setTimeout(()=>{
-        connectionEl.textContent="Connection: ✅";
-        connectionEl.style.color="#00ff00";
-        connectionEl.style.animation="";
+        if(ws && ws.readyState===WebSocket.OPEN && countdown>0){
+          connectionEl.textContent="Connection: ✅";
+          connectionEl.style.color="#00ff00";
+          connectionEl.style.animation="";
+        }
       }, duration);
     }
     randomWarning();
