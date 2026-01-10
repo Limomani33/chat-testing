@@ -84,26 +84,20 @@ function send(){
   // Join first
   if(!joined){
     userName=nameInput.value||"Anonymous";
-    ws.send(JSON.stringify({type:"join",name:userName}));
-    nameInput.disabled=true;
-    joined=true;
+    ws.send(JSON.stringify({type:"join", name:userName}));
+    nameInput.disabled = true;
+    joined = true;
   }
 
-  // Send file if pending
+  // Send pending file
   if(pendingFile){
-    if(typeof pendingFile === "string"){
-      // already base64
-      ws.send(JSON.stringify({type:pendingType,content:pendingFile,voice:pendingVoice}));
-      pendingFile=null; pendingType=null; pendingVoice=false; preview.textContent="";
-    } else {
-      // convert blob to base64
-      const reader = new FileReader();
-      reader.onload = ()=>{
-        ws.send(JSON.stringify({type:pendingType,content:reader.result,voice:pendingVoice}));
-        pendingFile=null; pendingType=null; pendingVoice=false; preview.textContent="";
-      };
-      reader.readAsDataURL(pendingFile);
-    }
+    ws.send(JSON.stringify({
+      type: pendingType,
+      content: pendingFile,  // base64 already stored
+      voice: pendingVoice
+    }));
+    pendingFile=null; pendingType=null; pendingVoice=false;
+    preview.textContent="";
     return;
   }
 
@@ -115,20 +109,28 @@ function send(){
 }
 
 // ===== FILE PICKERS =====
-imgInput.onchange=()=>{
-  const file=imgInput.files[0];
-  const reader=new FileReader();
-  reader.onload=()=>{pendingFile=reader.result; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
+imgInput.onchange = ()=>{
+  const file = imgInput.files[0];
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    pendingFile = reader.result; pendingType = "image"; pendingVoice=false;
+    preview.textContent = "🖼️ Image ready to send";
+  };
   reader.readAsDataURL(file);
 };
-audInput.onchange=()=>{
-  const file=audInput.files[0];
-  const reader=new FileReader();
-  reader.onload=()=>{pendingFile=reader.result; pendingType="audio"; pendingVoice=false; preview.textContent="🔊 Audio ready to send";};
+
+audInput.onchange = ()=>{
+  const file = audInput.files[0];
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    pendingFile = reader.result; pendingType = "audio"; pendingVoice=false;
+    preview.textContent = "🔊 Audio file ready to send";
+  };
   reader.readAsDataURL(file);
 };
-function pickImage(){imgInput.click();}
-function pickAudio(){audInput.click();}
+
+function pickImage(){ imgInput.click(); }
+function pickAudio(){ audInput.click(); }
 
 // ===== VOICE RECORDING =====
 async function toggleVoice(){
