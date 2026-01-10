@@ -4,25 +4,94 @@
 <meta charset="UTF-8">
 <title>Soapy Chat</title>
 <style>
-html,body{height:100%;margin:0;font-family:system-ui;background:radial-gradient(circle at top,#ff5ad6,#502070,#0b0314);color:white;}
-#app{width:720px;margin:20px auto;background:rgba(8,8,20,.92);border-radius:14px;box-shadow:0 0 50px #ff5ad688;padding:10px;display:flex;flex-direction:column;gap:10px;}
-#topbar{display:flex;align-items:center;justify-content:space-between;}
-#connection{font-size:20px;font-weight:bold;transition:opacity 1s, color 0.5s;}
-#controls{display:flex;gap:6px;align-items:center;}
-#chat{flex:1;padding:12px;overflow-y:auto;height:500px;background:rgba(0,0,0,0.2);border-radius:10px;}
-.msg{margin-bottom:10px;}
-.name{color:#ff90ff;font-weight:bold;}
-img{max-width:280px;border-radius:10px;margin-top:6px;box-shadow:0 0 15px #ff5ad655;}
-input,button{background:#1a0f2a;border:1px solid #ff5ad688;color:white;padding:8px;border-radius:8px;}
-button{background:linear-gradient(135deg,#ff5ad6,#7a3cff);box-shadow:0 0 12px #ff5ad666;cursor:pointer;}
-button.icon{width:40px;height:40px;padding:0;font-size:18px;}
-#preview{padding:4px 8px;font-size:13px;color:#ffd1ff;}
+html,body {
+  height:100%;
+  margin:0;
+  font-family:system-ui;
+  background:radial-gradient(circle at top,#ff5ad6,#502070,#0b0314);
+  color:white;
+}
+#app {
+  width:720px;
+  margin:20px auto;
+  background:rgba(8,8,20,.92);
+  border-radius:14px;
+  box-shadow:0 0 50px #ff5ad688;
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  height:90vh;
+}
+#topbar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+#connection {
+  font-size:20px;
+  font-weight:bold;
+  transition:color 0.5s, opacity 0.5s;
+}
+@keyframes pulse {
+  0%,100% {opacity:1;}
+  50% {opacity:0.2;}
+}
+#controls {
+  display:flex;
+  gap:6px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+#chat {
+  flex:1;
+  padding:12px;
+  overflow-y:auto;
+  background:rgba(0,0,0,0.2);
+  border-radius:10px;
+}
+.msg {
+  margin-bottom:10px;
+}
+.name {
+  color:#ff90ff;
+  font-weight:bold;
+}
+img {
+  max-width:280px;
+  border-radius:10px;
+  margin-top:6px;
+  box-shadow:0 0 15px #ff5ad655;
+}
+input,button {
+  background:#1a0f2a;
+  border:1px solid #ff5ad688;
+  color:white;
+  padding:8px;
+  border-radius:8px;
+}
+button {
+  background:linear-gradient(135deg,#ff5ad6,#7a3cff);
+  box-shadow:0 0 12px #ff5ad666;
+  cursor:pointer;
+}
+button.icon {
+  width:40px;
+  height:40px;
+  padding:0;
+  font-size:18px;
+}
+#preview {
+  padding:4px 8px;
+  font-size:13px;
+  color:#ffd1ff;
+}
 </style>
 </head>
 <body>
 <div id="app">
   <div id="topbar">
-    <div id="connection">Connection ✅</div>
+    <div id="connection">Connection: ✅</div>
   </div>
 
   <div id="controls">
@@ -56,9 +125,10 @@ function initWS(){
   ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
 
   ws.onopen = () => {
-    connectionEl.textContent = "Connection ✅";
-    connectionEl.style.color = "#00ff00";
-    connectionEl.style.opacity = 1;
+    connectionEl.textContent = "Connection: ✅";
+    connectionEl.style.color="#00ff00";
+    connectionEl.style.opacity=1;
+    connectionEl.style.animation="";
   };
 
   ws.onmessage=e=>{
@@ -68,9 +138,10 @@ function initWS(){
   };
 
   ws.onclose = () => {
-    connectionEl.textContent = "🚫 (Reload this page)";
-    connectionEl.style.color = "#ff0000";
-    connectionEl.style.opacity = 1;
+    connectionEl.textContent = "Connection: 🚫 (Reload this page)";
+    connectionEl.style.color="#ff0000";
+    connectionEl.style.opacity=1;
+    connectionEl.style.animation="";
   };
 }
 initWS();
@@ -79,7 +150,8 @@ function addMessage(msg){
   const d=document.createElement("div"); d.className="msg";
   if(msg.type==="image") d.innerHTML=`<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
   else d.innerHTML=`<span class="name">${msg.name}:</span> ${msg.content}`;
-  chat.appendChild(d); chat.scrollTop=chat.scrollHeight;
+  chat.appendChild(d);
+  chat.scrollTop=chat.scrollHeight;
 }
 
 // ===== SEND =====
@@ -114,24 +186,20 @@ imgInput.onchange=()=>{
 };
 function pickImage(){imgInput.click();}
 
-// ===== CONNECTION STATUS RANDOM WARNING =====
+// ===== CONNECTION STATUS RANDOM WARNING (⚠️) =====
 function randomWarning(){
   const interval=Math.random()*10000+5000; // 5-15s
   setTimeout(()=>{
     if(ws && ws.readyState===WebSocket.OPEN){
-      // fade in ⚠️
-      connectionEl.textContent="⚠️";
+      connectionEl.textContent="Connection: ⚠️";
       connectionEl.style.color="#ffff00";
-      connectionEl.style.opacity=0;
-      setTimeout(()=>{
-        connectionEl.style.opacity=1;
-      }, 100); // quick fade in
+      connectionEl.style.animation="pulse 3s infinite";
 
-      const duration = Math.random()*3000+3000; // 3-6s
+      const duration=Math.random()*3000+3000; // 3-6s pulse
       setTimeout(()=>{
-        connectionEl.textContent="Connection ✅";
+        connectionEl.textContent="Connection: ✅";
         connectionEl.style.color="#00ff00";
-        connectionEl.style.opacity=1;
+        connectionEl.style.animation="";
       }, duration);
     }
     randomWarning();
