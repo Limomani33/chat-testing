@@ -39,39 +39,47 @@ button.icon{width:40px;height:40px;padding:0;font-size:18px;}
 </div>
 
 <script>
-const ws = new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
-
-let joined=false;
-let userName="";
-let pendingFile=null;
-let pendingType=null;
-let pendingVoice=false;
-
 const chat=document.getElementById("chat");
 const preview=document.getElementById("preview");
 const timer=document.getElementById("timer");
 const nameInput=document.getElementById("name");
 const textInput=document.getElementById("text");
+const imgInput=document.getElementById("img");
+const audInput=document.getElementById("aud");
 const voiceBtn=document.getElementById("voiceBtn");
 
-ws.onmessage=e=>{
-  const msg=JSON.parse(e.data);
-  if(msg.type==="history") msg.messages.forEach(addMessage);
-  else addMessage(msg);
-};
+let ws;
+let joined=false;
+let userName="";
+let pendingFile=null;
+let pendingType=null;
+let pendingVoice=false;
+let recording=false,seconds=0,timerInt;
+
+// --- Initialize WebSocket ---
+function initWS(){
+  ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
+  ws.onmessage=e=>{
+    const msg=JSON.parse(e.data);
+    if(msg.type==="history") msg.messages.forEach(addMessage);
+    else addMessage(msg);
+  };
+  ws.onopen=()=>{console.log("WebSocket connected");};
+}
+initWS();
 
 function addMessage(msg){
   const d=document.createElement("div"); d.className="msg";
   if(msg.type==="image") d.innerHTML=`<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
   else if(msg.type==="audio") d.innerHTML=`<span class="name">${msg.name}:</span><div class="audio-bubble ${msg.voice?"voice":""}"><audio controls src="${msg.content}"></audio></div>`;
   else d.innerHTML=`<span class="name">${msg.name}:</span> ${msg.content}`;
-  chat.appendChild(d);
-  chat.scrollTop=chat.scrollHeight;
+  chat.appendChild(d); chat.scrollTop=chat.scrollHeight;
 }
 
-// ===== JOIN & SEND =====
+// ===== SEND =====
 function send(){
-  // join first
+  if(!ws || ws.readyState!==WebSocket.OPEN) return alert("WebSocket not connected yet!");
+
   if(!joined){
     userName=nameInput.value||"Anonymous";
     ws.send(JSON.stringify({type:"join",name:userName}));
@@ -79,24 +87,14 @@ function send(){
     joined=true;
   }
 
-  // if a pending file exists
   if(pendingFile){
     const reader=new FileReader();
-    reader.onload=()=>{
-      ws.send(JSON.stringify({
-        type:pendingType,
-        content:reader.result,
-        voice:pendingVoice
-      }));
-      // reset
-      pendingFile=null; pendingType=null; pendingVoice=false;
-      preview.textContent="";
-    };
+    reader.onload=()=>{ws.send(JSON.stringify({type:pendingType,content:reader.result,voice:pendingVoice}));
+      pendingFile=null; pendingType=null; pendingVoice=false; preview.textContent="";};
     reader.readAsDataURL(pendingFile);
     return;
   }
 
-  // text messages
   if(textInput.value.trim()){
     ws.send(JSON.stringify({type:"message",content:textInput.value}));
     textInput.value="";
@@ -104,36 +102,24 @@ function send(){
 }
 
 // ===== FILE PICKERS =====
-const img=document.getElementById("img");
-const aud=document.getElementById("aud");
-
-img.onchange=()=>{pendingFile=img.files[0]; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
-aud.onchange=()=>{pendingFile=aud.files[0]; pendingType="audio"; pendingVoice=false; preview.textContent="🔊 Audio file ready to send";};
-
-function pickImage(){img.click();}
-function pickAudio(){aud.click();}
+imgInput.onchange=()=>{pendingFile=imgInput.files[0]; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
+audInput.onchange=()=>{pendingFile=audInput.files[0]; pendingType="audio"; pendingVoice=false; preview.textContent="🔊 Audio ready to send";};
+function pickImage(){imgInput.click();}
+function pickAudio(){audInput.click();}
 
 // ===== VOICE RECORDING =====
-let recording=false,seconds=0,timerInt;
 async function recordVoice(){
   if(recording) return;
   recording=true; seconds=0;
   voiceBtn.textContent="⬆️"; timer.textContent="0:00 / 1:00";
-
   const stream=await navigator.mediaDevices.getUserMedia({audio:true});
   const rec=new MediaRecorder(stream); const chunks=[];
   rec.ondataavailable=e=>chunks.push(e.data);
-
   rec.onstop=()=>{
-    pendingFile=new Blob(chunks,{type:"audio/webm"});
-    pendingType="audio"; pendingVoice=true;
-    preview.textContent="🎤 Voice message ready to send";
-
-    voiceBtn.textContent="🎤"; timer.textContent="";
-    recording=false; clearInterval(timerInt);
-    stream.getTracks().forEach(t=>t.stop());
+    pendingFile=new Blob(chunks,{type:"audio/webm"}); pendingType="audio"; pendingVoice=true;
+    preview.textContent="🎤 Voice ready to send"; voiceBtn.textContent="🎤"; timer.textContent=""; recording=false;
+    stream.getTracks().forEach(t=>t.stop()); clearInterval(timerInt);
   };
-
   rec.start();
   timerInt=setInterval(()=>{
     seconds++;
