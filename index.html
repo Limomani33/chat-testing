@@ -81,70 +81,74 @@ function addMessage(msg){
 function send(){
   if(!ws || ws.readyState!==WebSocket.OPEN) return alert("WebSocket not connected yet!");
 
-  // Join first
   if(!joined){
     userName=nameInput.value||"Anonymous";
     ws.send(JSON.stringify({type:"join", name:userName}));
-    nameInput.disabled = true;
-    joined = true;
+    nameInput.disabled=true;
+    joined=true;
   }
 
-  // Send pending file
+  // Send file if pending
   if(pendingFile){
-    ws.send(JSON.stringify({
-      type: pendingType,
-      content: pendingFile,  // base64 already stored
-      voice: pendingVoice
-    }));
-    pendingFile=null; pendingType=null; pendingVoice=false;
-    preview.textContent="";
+    // If Blob (voice), convert to base64 first
+    if(pendingFile instanceof Blob){
+      const reader=new FileReader();
+      reader.onload=()=>{
+        ws.send(JSON.stringify({type:pendingType, content:reader.result, voice:pendingVoice}));
+        pendingFile=null; pendingType=null; pendingVoice=false;
+        preview.textContent="";
+      };
+      reader.readAsDataURL(pendingFile);
+    } else {
+      // already base64
+      ws.send(JSON.stringify({type:pendingType, content:pendingFile, voice:pendingVoice}));
+      pendingFile=null; pendingType=null; pendingVoice=false;
+      preview.textContent="";
+    }
     return;
   }
 
   // Send text
   if(textInput.value.trim()){
-    ws.send(JSON.stringify({type:"message",content:textInput.value}));
+    ws.send(JSON.stringify({type:"message", content:textInput.value}));
     textInput.value="";
   }
 }
 
 // ===== FILE PICKERS =====
-imgInput.onchange = ()=>{
-  const file = imgInput.files[0];
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    pendingFile = reader.result; pendingType = "image"; pendingVoice=false;
-    preview.textContent = "🖼️ Image ready to send";
-  };
+imgInput.onchange=()=>{
+  const file=imgInput.files[0];
+  const reader=new FileReader();
+  reader.onload=()=>{pendingFile=reader.result; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
   reader.readAsDataURL(file);
 };
-
-audInput.onchange = ()=>{
-  const file = audInput.files[0];
-  const reader = new FileReader();
-  reader.onload = ()=>{
-    pendingFile = reader.result; pendingType = "audio"; pendingVoice=false;
-    preview.textContent = "🔊 Audio file ready to send";
-  };
+audInput.onchange=()=>{
+  const file=audInput.files[0];
+  const reader=new FileReader();
+  reader.onload=()=>{pendingFile=reader.result; pendingType="audio"; pendingVoice=false; preview.textContent="🔊 Audio ready to send";};
   reader.readAsDataURL(file);
 };
-
-function pickImage(){ imgInput.click(); }
-function pickAudio(){ audInput.click(); }
+function pickImage(){imgInput.click();}
+function pickAudio(){audInput.click();}
 
 // ===== VOICE RECORDING =====
 async function toggleVoice(){
   if(!recording){
-    // Start recording
     recording=true; seconds=0; voiceBtn.textContent="⬆️"; timer.textContent="0:00 / 1:00";
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
     recorder=new MediaRecorder(stream); const chunks=[];
     recorder.ondataavailable=e=>chunks.push(e.data);
     recorder.onstop=()=>{
-      pendingFile=new Blob(chunks,{type:"audio/webm"}); pendingType="audio"; pendingVoice=true;
-      preview.textContent="🎤 Voice ready to send"; 
-      voiceBtn.textContent="🎤"; timer.textContent=""; recording=false; clearInterval(timerInt);
+      const blob=new Blob(chunks,{type:"audio/webm"});
+      const reader=new FileReader();
+      reader.onload=()=>{
+        pendingFile=reader.result; pendingType="audio"; pendingVoice=true;
+        preview.textContent="🎤 Voice ready to send"; 
+        voiceBtn.textContent="🎤"; timer.textContent=""; recording=false;
+      };
+      reader.readAsDataURL(blob);
       stream.getTracks().forEach(t=>t.stop());
+      clearInterval(timerInt);
     };
     recorder.start();
     timerInt=setInterval(()=>{
@@ -153,7 +157,6 @@ async function toggleVoice(){
       if(seconds>=60) recorder.stop();
     },1000);
   } else {
-    // Stop recording manually
     recorder.stop();
   }
 }
