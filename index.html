@@ -32,7 +32,6 @@ button.icon{width:40px;height:40px;padding:0;font-size:18px;}
     <input id="name" placeholder="Name">
     <input id="text" placeholder="Message">
     <input type="file" id="img" accept="image/*" hidden>
-    <input type="file" id="aud" accept="audio/*" hidden>
     <button onclick="send()">Send</button>
   </div>
 </div>
@@ -44,7 +43,6 @@ const timer=document.getElementById("timer");
 const nameInput=document.getElementById("name");
 const textInput=document.getElementById("text");
 const imgInput=document.getElementById("img");
-const audInput=document.getElementById("aud");
 const voiceBtn=document.getElementById("voiceBtn");
 
 let ws;
@@ -87,9 +85,8 @@ function send(){
     joined=true;
   }
 
-  // Send file if pending
+  // Send pending file (voice or image)
   if(pendingFile){
-    // If Blob (voice), convert to base64 first
     if(pendingFile instanceof Blob){
       const reader=new FileReader();
       reader.onload=()=>{
@@ -99,7 +96,6 @@ function send(){
       };
       reader.readAsDataURL(pendingFile);
     } else {
-      // already base64
       ws.send(JSON.stringify({type:pendingType, content:pendingFile, voice:pendingVoice}));
       pendingFile=null; pendingType=null; pendingVoice=false;
       preview.textContent="";
@@ -114,21 +110,14 @@ function send(){
   }
 }
 
-// ===== FILE PICKERS =====
+// ===== IMAGE PICKER =====
 imgInput.onchange=()=>{
   const file=imgInput.files[0];
   const reader=new FileReader();
   reader.onload=()=>{pendingFile=reader.result; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
   reader.readAsDataURL(file);
 };
-audInput.onchange=()=>{
-  const file=audInput.files[0];
-  const reader=new FileReader();
-  reader.onload=()=>{pendingFile=reader.result; pendingType="audio"; pendingVoice=false; preview.textContent="🔊 Audio ready to send";};
-  reader.readAsDataURL(file);
-};
 function pickImage(){imgInput.click();}
-function pickAudio(){audInput.click();}
 
 // ===== VOICE RECORDING =====
 async function toggleVoice(){
@@ -162,4 +151,3 @@ async function toggleVoice(){
 </script>
 </body>
 </html>
-
