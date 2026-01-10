@@ -28,7 +28,7 @@ button.icon{width:40px;height:40px;padding:0;font-size:18px;}
   <div id="controls">
     <button class="icon" onclick="pickImage()">🖼️</button>
     <button class="icon" onclick="pickAudio()">🔊</button>
-    <button class="icon" id="voiceBtn" onclick="recordVoice()">🎤</button>
+    <button class="icon" id="voiceBtn" onclick="toggleVoice()">🎤</button>
     <span id="timer"></span>
     <input id="name" placeholder="Name">
     <input id="text" placeholder="Message">
@@ -54,7 +54,8 @@ let userName="";
 let pendingFile=null;
 let pendingType=null;
 let pendingVoice=false;
-let recording=false,seconds=0,timerInt;
+
+let recording=false,seconds=0,timerInt,recorder=null;
 
 // --- Initialize WebSocket ---
 function initWS(){
@@ -80,6 +81,7 @@ function addMessage(msg){
 function send(){
   if(!ws || ws.readyState!==WebSocket.OPEN) return alert("WebSocket not connected yet!");
 
+  // Join first
   if(!joined){
     userName=nameInput.value||"Anonymous";
     ws.send(JSON.stringify({type:"join",name:userName}));
@@ -87,14 +89,25 @@ function send(){
     joined=true;
   }
 
+  // Send file if pending
   if(pendingFile){
-    const reader=new FileReader();
-    reader.onload=()=>{ws.send(JSON.stringify({type:pendingType,content:reader.result,voice:pendingVoice}));
-      pendingFile=null; pendingType=null; pendingVoice=false; preview.textContent="";};
-    reader.readAsDataURL(pendingFile);
+    if(typeof pendingFile === "string"){
+      // already base64
+      ws.send(JSON.stringify({type:pendingType,content:pendingFile,voice:pendingVoice}));
+      pendingFile=null; pendingType=null; pendingVoice=false; preview.textContent="";
+    } else {
+      // convert blob to base64
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        ws.send(JSON.stringify({type:pendingType,content:reader.result,voice:pendingVoice}));
+        pendingFile=null; pendingType=null; pendingVoice=false; preview.textContent="";
+      };
+      reader.readAsDataURL(pendingFile);
+    }
     return;
   }
 
+  // Send text
   if(textInput.value.trim()){
     ws.send(JSON.stringify({type:"message",content:textInput.value}));
     textInput.value="";
@@ -102,30 +115,45 @@ function send(){
 }
 
 // ===== FILE PICKERS =====
-imgInput.onchange=()=>{pendingFile=imgInput.files[0]; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
-audInput.onchange=()=>{pendingFile=audInput.files[0]; pendingType="audio"; pendingVoice=false; preview.textContent="🔊 Audio ready to send";};
+imgInput.onchange=()=>{
+  const file=imgInput.files[0];
+  const reader=new FileReader();
+  reader.onload=()=>{pendingFile=reader.result; pendingType="image"; pendingVoice=false; preview.textContent="🖼️ Image ready to send";};
+  reader.readAsDataURL(file);
+};
+audInput.onchange=()=>{
+  const file=audInput.files[0];
+  const reader=new FileReader();
+  reader.onload=()=>{pendingFile=reader.result; pendingType="audio"; pendingVoice=false; preview.textContent="🔊 Audio ready to send";};
+  reader.readAsDataURL(file);
+};
 function pickImage(){imgInput.click();}
 function pickAudio(){audInput.click();}
 
 // ===== VOICE RECORDING =====
-async function recordVoice(){
-  if(recording) return;
-  recording=true; seconds=0;
-  voiceBtn.textContent="⬆️"; timer.textContent="0:00 / 1:00";
-  const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-  const rec=new MediaRecorder(stream); const chunks=[];
-  rec.ondataavailable=e=>chunks.push(e.data);
-  rec.onstop=()=>{
-    pendingFile=new Blob(chunks,{type:"audio/webm"}); pendingType="audio"; pendingVoice=true;
-    preview.textContent="🎤 Voice ready to send"; voiceBtn.textContent="🎤"; timer.textContent=""; recording=false;
-    stream.getTracks().forEach(t=>t.stop()); clearInterval(timerInt);
-  };
-  rec.start();
-  timerInt=setInterval(()=>{
-    seconds++;
-    timer.textContent=`0:${String(seconds).padStart(2,"0")} / 1:00`;
-    if(seconds>=60) rec.stop();
-  },1000);
+async function toggleVoice(){
+  if(!recording){
+    // Start recording
+    recording=true; seconds=0; voiceBtn.textContent="⬆️"; timer.textContent="0:00 / 1:00";
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    recorder=new MediaRecorder(stream); const chunks=[];
+    recorder.ondataavailable=e=>chunks.push(e.data);
+    recorder.onstop=()=>{
+      pendingFile=new Blob(chunks,{type:"audio/webm"}); pendingType="audio"; pendingVoice=true;
+      preview.textContent="🎤 Voice ready to send"; 
+      voiceBtn.textContent="🎤"; timer.textContent=""; recording=false; clearInterval(timerInt);
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    recorder.start();
+    timerInt=setInterval(()=>{
+      seconds++;
+      timer.textContent=`0:${String(seconds).padStart(2,"0")} / 1:00`;
+      if(seconds>=60) recorder.stop();
+    },1000);
+  } else {
+    // Stop recording manually
+    recorder.stop();
+  }
 }
 </script>
 </body>
