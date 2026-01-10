@@ -120,17 +120,18 @@ async function toggleVoice(){
   if(!recording){
     recording=true; seconds=0; voiceBtn.textContent="⬆️"; timer.textContent="0:00 / 1:00";
     const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-    recorder=new MediaRecorder(stream); const chunks=[];
+    recorder=new MediaRecorder(stream, { mimeType: "audio/ogg" }); // FIXED MIME
+    const chunks=[];
     recorder.ondataavailable=e=>chunks.push(e.data);
     recorder.onstop=()=>{
-      const blob=new Blob(chunks,{type:"audio/webm"});
+      const blob=new Blob(chunks,{type:"audio/ogg"}); // FIXED MIME
       const reader=new FileReader();
       reader.onloadend=()=>{
         pendingFile=reader.result; pendingType="audio"; pendingVoice=true;
         preview.textContent="🎤 Voice ready to send";
         voiceBtn.textContent="🎤"; timer.textContent=""; recording=false;
       };
-      reader.readAsDataURL(blob); // ensures proper base64 data URL
+      reader.readAsDataURL(blob); // creates proper playable data URL
       stream.getTracks().forEach(t=>t.stop());
       clearInterval(timerInt);
     };
