@@ -3,235 +3,172 @@
 <head>
 <meta charset="UTF-8">
 <title>Soapy Chat</title>
+
 <style>
-html,body {
-  height:100%;
-  margin:0;
-  font-family:system-ui;
+html,body{
+  height:100%;margin:0;font-family:system-ui;
   background:radial-gradient(circle at top,#ff5ad6,#502070,#0b0314);
   color:white;
 }
-#app {
-  width:720px;
-  margin:20px auto;
+#app{
+  width:720px;height:90vh;margin:20px auto;
   background:rgba(8,8,20,.92);
-  border-radius:14px;
-  box-shadow:0 0 50px #ff5ad688;
-  padding:10px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  height:90vh;
+  border-radius:14px;box-shadow:0 0 50px #ff5ad688;
+  padding:10px;display:flex;flex-direction:column;gap:10px;
 }
-#topbar {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
+#topbar{font-size:20px;font-weight:bold;}
+#chat{
+  flex:1;overflow-y:auto;padding:12px;
+  background:rgba(0,0,0,.2);border-radius:10px;
 }
-#connection {
-  font-size:20px;
-  font-weight:bold;
-  transition:color 0.5s, opacity 0.5s;
+.msg{margin-bottom:10px}
+.name{color:#ff90ff;font-weight:bold}
+img{max-width:280px;border-radius:10px;margin-top:6px}
+input,button{
+  background:#1a0f2a;border:1px solid #ff5ad688;
+  color:white;padding:8px;border-radius:8px;
 }
-@keyframes pulse {
-  0%,100% {opacity:1;}
-  50% {opacity:0.2;}
-}
-#controls {
-  display:flex;
-  gap:6px;
-  align-items:center;
-  flex-wrap:wrap;
-}
-#chat {
-  flex:1;
-  padding:12px;
-  overflow-y:auto;
-  background:rgba(0,0,0,0.2);
-  border-radius:10px;
-}
-.msg {
-  margin-bottom:10px;
-}
-.name {
-  color:#ff90ff;
-  font-weight:bold;
-}
-img {
-  max-width:280px;
-  border-radius:10px;
-  margin-top:6px;
-  box-shadow:0 0 15px #ff5ad655;
-}
-input,button {
-  background:#1a0f2a;
-  border:1px solid #ff5ad688;
-  color:white;
-  padding:8px;
-  border-radius:8px;
-}
-button {
+button{
   background:linear-gradient(135deg,#ff5ad6,#7a3cff);
-  box-shadow:0 0 12px #ff5ad666;
   cursor:pointer;
 }
-button.icon {
-  width:40px;
-  height:40px;
-  padding:0;
-  font-size:18px;
+button.icon{width:40px;height:40px;padding:0;font-size:18px}
+
+/* ==== SoapySounds Window ==== */
+#soundWindow{
+  position:absolute;top:120px;left:120px;
+  width:300px;background:#0e0620;
+  border-radius:10px;box-shadow:0 0 30px #ff5ad699;
+  display:none;flex-direction:column;
 }
-#preview {
-  padding:4px 8px;
-  font-size:13px;
-  color:#ffd1ff;
+#soundTitle{
+  background:#2a1040;
+  padding:6px 10px;
+  cursor:move;
+  display:flex;justify-content:space-between;
+  border-radius:10px 10px 0 0;
 }
+#soundContent{padding:10px}
+.close{cursor:pointer;font-weight:bold}
 </style>
 </head>
+
 <body>
 <div id="app">
-  <div id="topbar">
-    <div id="connection">Connection: ✅</div>
-  </div>
+  <div id="topbar">Connection: ✅</div>
 
-  <div id="controls">
+  <div>
+    <button class="icon" onclick="openSoundWindow()">🔊</button>
     <button class="icon" onclick="pickImage()">🖼️</button>
     <input id="name" placeholder="Name">
     <input id="text" placeholder="Message">
-    <input type="file" id="img" accept="image/*" hidden>
     <button onclick="send()">Send</button>
+    <input id="img" type="file" accept="image/*" hidden>
   </div>
 
-  <div id="preview"></div>
   <div id="chat"></div>
 </div>
 
+<!-- SoapySounds -->
+<div id="soundWindow">
+  <div id="soundTitle">
+    <span>SoapySounds</span>
+    <span class="close" onclick="closeSoundWindow()">✖</span>
+  </div>
+  <div id="soundContent">
+    <input type="file" id="audioFile" accept="audio/*"><br><br>
+    <audio id="audioPlayer" controls style="width:100%"></audio><br><br>
+    <button onclick="sendAudio()">Send Audio</button>
+  </div>
+</div>
+
 <script>
-const chat=document.getElementById("chat");
-const preview=document.getElementById("preview");
-const connectionEl=document.getElementById("connection");
-const nameInput=document.getElementById("name");
-const textInput=document.getElementById("text");
-const imgInput=document.getElementById("img");
-
-let ws;
+const ws = new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
+const chat = document.getElementById("chat");
 let joined=false;
-let userName="";
-let pendingFile=null;
-let pendingType=null;
+let currentAudio=null;
 
-// ===== CONNECTION TIMER (14:30) =====
-let countdown = 870; // 14m30s in seconds
-let countdownInterval;
-
-function startCountdown(){
-  clearInterval(countdownInterval);
-  countdownInterval = setInterval(()=>{
-    countdown--;
-    if(countdown<=0){
-      clearInterval(countdownInterval);
-      connectionEl.textContent="Connection: 🚫 (Reload this page)";
-      connectionEl.style.color="#ff0000";
-      connectionEl.style.opacity=1;
-      connectionEl.style.animation="";
-    }
-  },1000);
-}
-
-// ===== WEBSOCKET =====
-function initWS(){
-  ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
-
-  ws.onopen = () => {
-    connectionEl.textContent = "Connection: ✅";
-    connectionEl.style.color="#00ff00";
-    connectionEl.style.opacity=1;
-    connectionEl.style.animation="";
-    countdown = 870; // reset countdown on connect
-    startCountdown();
-  };
-
-  ws.onmessage=e=>{
-    const msg=JSON.parse(e.data);
-    if(msg.type==="history") msg.messages.forEach(addMessage);
-    else addMessage(msg);
-  };
-
-  ws.onclose = () => {
-    clearInterval(countdownInterval);
-    connectionEl.textContent = "Connection: 🚫 (Reload this page)";
-    connectionEl.style.color="#ff0000";
-    connectionEl.style.opacity=1;
-    connectionEl.style.animation="";
-  };
-}
-initWS();
+// ===== WebSocket =====
+ws.onmessage = e => {
+  const msg = JSON.parse(e.data);
+  if(msg.type==="history") msg.messages.forEach(addMessage);
+  else addMessage(msg);
+};
 
 function addMessage(msg){
-  const d=document.createElement("div"); d.className="msg";
-  if(msg.type==="image") d.innerHTML=`<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
-  else d.innerHTML=`<span class="name">${msg.name}:</span> ${msg.content}`;
+  const d=document.createElement("div");
+  d.className="msg";
+  if(msg.type==="image"){
+    d.innerHTML=`<span class="name">${msg.name}:</span><br><img src="${msg.content}">`;
+  } else if(msg.type==="audio"){
+    d.innerHTML=`<span class="name">${msg.name}:</span>
+      <a href="#" onclick='openAudio("${msg.content}")'>🔊 Open in SoapySounds</a>`;
+  } else {
+    d.innerHTML=`<span class="name">${msg.name}:</span> ${msg.content}`;
+  }
   chat.appendChild(d);
   chat.scrollTop=chat.scrollHeight;
 }
 
-// ===== SEND =====
+// ===== Send =====
 function send(){
-  if(!ws || ws.readyState!==WebSocket.OPEN) return alert("WebSocket not connected yet!");
   if(!joined){
-    userName=nameInput.value||"Anonymous";
-    ws.send(JSON.stringify({type:"join", name:userName}));
-    nameInput.disabled=true;
-    joined=true;
+    ws.send(JSON.stringify({type:"join",name:name.value||"Anonymous"}));
+    name.disabled=true;joined=true;
   }
-
-  // reset countdown on send
-  countdown = 870;
-
-  if(pendingFile){
-    ws.send(JSON.stringify({type:pendingType, content:pendingFile}));
-    pendingFile=null; pendingType=null;
-    preview.textContent="";
-    return;
-  }
-
-  if(textInput.value.trim()){
-    ws.send(JSON.stringify({type:"message", content:textInput.value}));
-    textInput.value="";
+  if(text.value.trim()){
+    ws.send(JSON.stringify({type:"message",content:text.value}));
+    text.value="";
   }
 }
 
-// ===== IMAGE =====
-imgInput.onchange=()=>{
-  const file=imgInput.files[0];
-  const reader=new FileReader();
-  reader.onload=()=>{pendingFile=reader.result; pendingType="image"; preview.textContent="🖼️ Image ready to send";};
-  reader.readAsDataURL(file);
+// ===== Image =====
+function pickImage(){img.click()}
+img.onchange=()=>{
+  const r=new FileReader();
+  r.onload=()=>ws.send(JSON.stringify({type:"image",content:r.result}));
+  r.readAsDataURL(img.files[0]);
 };
-function pickImage(){imgInput.click();}
 
-// ===== CONNECTION STATUS RANDOM WARNING (⚠️) =====
-function randomWarning(){
-  const interval=Math.random()*10000+5000; // 5-15s
-  setTimeout(()=>{
-    if(ws && ws.readyState===WebSocket.OPEN){
-      connectionEl.textContent="Connection: ⚠️";
-      connectionEl.style.color="#ffff00";
-      connectionEl.style.animation="pulse 3s infinite";
+// ===== Audio =====
+audioFile.onchange=()=>{
+  const r=new FileReader();
+  r.onload=()=>{
+    currentAudio=r.result;
+    audioPlayer.src=currentAudio;
+  };
+  r.readAsDataURL(audioFile.files[0]);
+};
 
-      const duration=Math.random()*3000+3000; // 3-6s pulse
-      setTimeout(()=>{
-        if(ws && ws.readyState===WebSocket.OPEN && countdown>0){
-          connectionEl.textContent="Connection: ✅";
-          connectionEl.style.color="#00ff00";
-          connectionEl.style.animation="";
-        }
-      }, duration);
-    }
-    randomWarning();
-  }, interval);
+function sendAudio(){
+  if(currentAudio){
+    ws.send(JSON.stringify({type:"audio",content:currentAudio}));
+    closeSoundWindow();
+  }
 }
-randomWarning();
+
+function openAudio(data){
+  openSoundWindow();
+  audioPlayer.src=data;
+  audioPlayer.play();
+}
+
+// ===== Window Controls =====
+function openSoundWindow(){soundWindow.style.display="flex"}
+function closeSoundWindow(){soundWindow.style.display="none"}
+
+// ===== Dragging =====
+let drag=false,dx,dy;
+soundTitle.onmousedown=e=>{
+  drag=true;dx=e.offsetX;dy=e.offsetY;
+};
+document.onmousemove=e=>{
+  if(drag){
+    soundWindow.style.left=e.pageX-dx+"px";
+    soundWindow.style.top=e.pageY-dy+"px";
+  }
+};
+document.onmouseup=()=>drag=false;
 </script>
 </body>
 </html>
