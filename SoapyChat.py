@@ -38,7 +38,7 @@ async def websocket_handler(request):
                 data = json.loads(msg.data)
                 if data["type"] == "join":
                     users[ws] = data["name"]
-                elif data["type"] in ("message", "image"):
+                elif data["type"] in ("message", "image", "audio"):
                     payload = {
                         "type": data["type"],
                         "name": users.get(ws, "Anonymous"),
@@ -63,3 +63,4 @@ app.router.add_get("/ws", websocket_handler)
 # Render sets the port in $PORT
 port = int(os.environ.get("PORT", 8000))
 web.run_app(app, host="0.0.0.0", port=port)
+
