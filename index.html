@@ -82,16 +82,25 @@ button.icon{width:40px;height:40px;padding:0;font-size:18px}
   </div>
 </div>
 <script>
+/* ===== ELEMENT REFERENCES ===== */
 const chat = document.getElementById("chat");
 const connectionEl = document.getElementById("topbar");
 
+const nameInput = document.getElementById("name");
+const textInput = document.getElementById("text");
+const imgInput = document.getElementById("img");
+
+const soundWindow = document.getElementById("soundWindow");
+const soundTitle = document.getElementById("soundTitle");
+const audioFile = document.getElementById("audioFile");
+const audioPlayer = document.getElementById("audioPlayer");
+
+/* ===== STATE ===== */
 let ws;
 let joined = false;
 let currentAudio = null;
 
-// =====================
-// CONNECT
-// =====================
+/* ===== CONNECT ===== */
 function connect() {
   ws = new WebSocket(
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
@@ -116,12 +125,9 @@ function connect() {
     }
   };
 }
-
 connect();
 
-// =====================
-// CHAT RENDERING
-// =====================
+/* ===== CHAT RENDER ===== */
 function addMessage(msg) {
   const d = document.createElement("div");
   d.className = "msg";
@@ -133,8 +139,7 @@ function addMessage(msg) {
   else if (msg.type === "audio") {
     d.innerHTML = `
       <span class="name">${msg.name}</span>
-      just sent an audio
-      <br>
+      just sent an audio<br>
       <button onclick='openAudio("${msg.content}")'>
         🔊 Open in SoapySounds
       </button>`;
@@ -147,34 +152,30 @@ function addMessage(msg) {
   chat.scrollTop = chat.scrollHeight;
 }
 
-// =====================
-// SEND TEXT
-// =====================
+/* ===== SEND TEXT ===== */
 function send() {
   if (!joined) {
     ws.send(JSON.stringify({
       type: "join",
-      name: name.value || "Anonymous"
+      name: nameInput.value || "Anonymous"
     }));
-    name.disabled = true;
+    nameInput.disabled = true;
     joined = true;
   }
 
-  if (text.value.trim()) {
+  if (textInput.value.trim()) {
     ws.send(JSON.stringify({
       type: "message",
-      content: text.value
+      content: textInput.value
     }));
-    text.value = "";
+    textInput.value = "";
   }
 }
 
-// =====================
-// IMAGE
-// =====================
-function pickImage() { img.click(); }
+/* ===== IMAGE ===== */
+function pickImage() { imgInput.click(); }
 
-img.onchange = () => {
+imgInput.onchange = () => {
   const r = new FileReader();
   r.onload = () => {
     ws.send(JSON.stringify({
@@ -182,12 +183,18 @@ img.onchange = () => {
       content: r.result
     }));
   };
-  r.readAsDataURL(img.files[0]);
+  r.readAsDataURL(imgInput.files[0]);
 };
 
-// =====================
-// AUDIO (SoapySounds)
-// =====================
+/* ===== SoapySounds ===== */
+function openSoundWindow() {
+  soundWindow.style.display = "flex";
+}
+
+function closeSoundWindow() {
+  soundWindow.style.display = "none";
+}
+
 audioFile.onchange = () => {
   const r = new FileReader();
   r.onload = () => {
@@ -213,8 +220,26 @@ function openAudio(data) {
   audioPlayer.src = data;
   audioPlayer.play();
 }
+
+/* ===== DRAG WINDOW ===== */
+let drag = false, dx = 0, dy = 0;
+
+soundTitle.onmousedown = e => {
+  drag = true;
+  dx = e.offsetX;
+  dy = e.offsetY;
+};
+
+document.onmousemove = e => {
+  if (!drag) return;
+  soundWindow.style.left = (e.pageX - dx) + "px";
+  soundWindow.style.top  = (e.pageY - dy) + "px";
+};
+
+document.onmouseup = () => drag = false;
 </script>
 </body>
 </html>
+
 
 
