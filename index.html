@@ -4,205 +4,228 @@
 <meta charset="UTF-8">
 <title>SoapyChat</title>
 
-<style id="soapy-style">
+<style>
 :root {
-  --main-color: #a855f7;
-  --bg-gradient: radial-gradient(circle at top, #ff5ad6, #502070, #0b0314);
+  --accent: #a855f7;
+  --bg: linear-gradient(135deg, #1e0033, #3a0066);
+  --bubble: rgba(255,255,255,0.1);
+  --button: #7c3aed;
 }
 
-html, body {
+body {
   margin: 0;
-  height: 100%;
   font-family: system-ui, sans-serif;
-  background: var(--bg-gradient);
+  background: var(--bg);
   color: white;
-  overflow: hidden;
-}
-
-#app {
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  height: 100%;
+}
+
+header {
+  padding: 14px 18px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+#status {
+  font-size: 14px;
+  opacity: 0.85;
 }
 
 #chat {
   flex: 1;
-  padding: 16px;
   overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .msg {
-  margin-bottom: 8px;
-  background: rgba(255,255,255,0.08);
-  padding: 8px 12px;
-  border-radius: 12px;
+  background: var(--bubble);
+  padding: 10px 14px;
+  border-radius: 14px;
   max-width: 70%;
 }
 
-.me {
-  margin-left: auto;
-  background: var(--main-color);
+.name {
+  font-size: 12px;
+  opacity: 0.7;
 }
 
-#inputBar {
+img.chat-img {
+  max-width: 100%;
+  border-radius: 10px;
+  margin-top: 6px;
+}
+
+#bar {
   display: flex;
-  padding: 12px;
   gap: 8px;
-  backdrop-filter: blur(10px);
+  padding: 10px;
+  background: rgba(0,0,0,0.25);
 }
 
-input {
+#bar input[type="text"] {
   flex: 1;
-  border-radius: 999px;
+  border-radius: 10px;
   border: none;
-  padding: 10px 14px;
-  outline: none;
+  padding: 10px;
 }
 
 button {
   border: none;
-  border-radius: 999px;
+  border-radius: 10px;
   padding: 10px 14px;
-  background: var(--main-color);
+  font-size: 18px;
+  background: var(--button);
   color: white;
-  font-size: 16px;
   cursor: pointer;
 }
 </style>
 </head>
 
 <body>
-<div id="app">
 
-  <div id="chat"></div>
+<header>
+  SoapyChat
+  <div id="status">🫧 Connecting…</div>
+</header>
 
-  <div id="inputBar">
-    <button id="btn1">➤</button>
-    <button id="btn2">🖼️</button>
-    <button id="btn3">🎵</button>
-    <input id="msgInput" placeholder="Type something..." />
-  </div>
+<div id="chat"></div>
 
+<div id="bar">
+  <button id="imgBtn">🖼️</button>
+  <input id="text" placeholder="Message">
+  <button id="sendBtn">➡️</button>
 </div>
 
-<script>
-const chat = document.getElementById("chat");
-const input = document.getElementById("msgInput");
+<input id="imgInput" type="file" accept="image/*" hidden>
 
-function addMsg(text, me=false) {
-  const d = document.createElement("div");
-  d.className = "msg" + (me ? " me" : "");
-  d.textContent = text;
-  chat.appendChild(d);
+<script>
+/* =====================
+   WEBSOCKET
+===================== */
+const ws = new WebSocket(
+  (location.protocol === "https:" ? "wss://" : "ws://") +
+  location.host + "/ws"
+);
+
+const chat = document.getElementById("chat");
+const statusEl = document.getElementById("status");
+
+const name = prompt("Name") || "Anonymous";
+
+ws.onopen = () => {
+  statusEl.textContent = "🫧 Connected";
+  ws.send(JSON.stringify({ type: "join", name }));
+};
+
+ws.onclose = () => {
+  statusEl.textContent = "🚫 Disconnected (Reload page)";
+};
+
+ws.onmessage = e => {
+  const data = JSON.parse(e.data);
+  if (data.type === "history") {
+    data.messages.forEach(addMessage);
+  } else {
+    addMessage(data);
+  }
+};
+
+function addMessage(data) {
+  const div = document.createElement("div");
+  div.className = "msg";
+
+  div.innerHTML = `<div class="name">${data.name}</div>`;
+
+  if (data.type === "message") {
+    div.innerHTML += `<div>${data.content}</div>`;
+  }
+
+  if (data.type === "image") {
+    const img = document.createElement("img");
+    img.src = data.content;
+    img.className = "chat-img";
+    div.appendChild(img);
+  }
+
+  chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
 
-// ============================
-// SCPACK LOADER
-// ============================
-document.body.addEventListener("dragover", e => e.preventDefault());
-document.body.addEventListener("drop", e => {
+/* =====================
+   SEND TEXT
+===================== */
+document.getElementById("sendBtn").onclick = () => {
+  const t = text.value.trim();
+  if (!t) return;
+  ws.send(JSON.stringify({ type: "message", content: t }));
+  text.value = "";
+};
+
+/* =====================
+   SEND IMAGE
+===================== */
+imgBtn.onclick = () => imgInput.click();
+
+imgInput.onchange = () => {
+  const file = imgInput.files[0];
+  if (!file) return;
+
+  const r = new FileReader();
+  r.onload = () => {
+    ws.send(JSON.stringify({
+      type: "image",
+      content: r.result
+    }));
+  };
+  r.readAsDataURL(file);
+};
+
+/* =====================
+   SCPACK LOADER
+===================== */
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => {
   e.preventDefault();
-  const file = e.dataTransfer.files[0];
-  if (!file || !file.name.endsWith(".scpack")) return;
-  loadSCPACK(file);
+  const f = e.dataTransfer.files[0];
+  if (!f || !f.name.endsWith(".SCPACK")) return;
+
+  const r = new FileReader();
+  r.onload = () => applyPack(r.result);
+  r.readAsArrayBuffer(f);
 });
 
-function loadSCPACK(file) {
-  const reader = new FileReader();
-  reader.onload = () => parseSCPACK(reader.result);
-  reader.readAsArrayBuffer(file);
-}
+function applyPack(buf) {
+  const d = new DataView(buf);
+  let o = 0;
 
-function parseSCPACK(buf) {
-  const dv = new DataView(buf);
-  let i = 0;
-
-  function readStr() {
-    const len = dv.getUint8(i++);
+  const readStr = () => {
+    const len = d.getUint16(o); o += 2;
     let s = "";
-    for (let j = 0; j < len; j++) {
-      s += String.fromCharCode(dv.getUint8(i++));
+    for (let i=0;i<len;i++) {
+      s += String.fromCharCode(d.getUint8(o++));
     }
-    return decodeURIComponent(escape(s));
-  }
+    return s;
+  };
 
-  // Header
-  const magic = String.fromCharCode(...new Uint8Array(buf.slice(0,8)));
-  i = 9;
-  if (!magic.startsWith("SCPACK")) return alert("Invalid SCPACK");
+  const gradients = readStr();
+  const accent = readStr();
+  const sendEmoji = readStr();
+  const imgEmoji = readStr();
+  const buttonColor = readStr();
 
-  // Gradients
-  const gCount = dv.getUint8(i++);
-  const gradients = [];
-  for (let g = 0; g < gCount; g++) gradients.push(readStr());
+  document.documentElement.style.setProperty("--bg", gradients);
+  document.documentElement.style.setProperty("--accent", accent);
+  document.documentElement.style.setProperty("--button", buttonColor);
 
-  // Emojis
-  const eCount = dv.getUint8(i++);
-  const emojis = [];
-  for (let e = 0; e < eCount; e++) emojis.push(readStr());
-
-  // Color
-  const color = readStr();
-
-  // Buttons
-  const bCount = dv.getUint8(i++);
-  const buttons = [];
-  for (let b = 0; b < bCount; b++) {
-    buttons.push({
-      label: readStr(),
-      action: dv.getUint8(i++)
-    });
-  }
-
-  applyTheme(gradients, emojis, color, buttons);
+  sendBtn.textContent = sendEmoji;
+  imgBtn.textContent = imgEmoji;
 }
-
-function applyTheme(gradients, emojis, color, buttons) {
-  document.documentElement.style.setProperty("--bg-gradient", gradients[0]);
-  document.documentElement.style.setProperty("--main-color", color);
-
-  // Apply emojis
-  const btnEls = [
-    document.getElementById("btn1"),
-    document.getElementById("btn2"),
-    document.getElementById("btn3")
-  ];
-
-  emojis.forEach((e, idx) => {
-    if (btnEls[idx]) btnEls[idx].textContent = e;
-  });
-
-  // Wire buttons
-  btnEls.forEach(b => b.onclick = null);
-
-  buttons.forEach((b, idx) => {
-    const el = btnEls[idx];
-    if (!el) return;
-    el.textContent = b.label;
-
-    if (b.action === 1) {
-      el.onclick = sendMsg;
-    } else if (b.action === 2) {
-      el.onclick = () => addMsg("🖼️ Image action triggered");
-    } else if (b.action === 3) {
-      el.onclick = () => addMsg("🎵 SoapySound triggered");
-    }
-  });
-
-  addMsg("🫧 SCPACK Applied!");
-}
-
-// ============================
-// ACTIONS
-// ============================
-function sendMsg() {
-  if (!input.value) return;
-  addMsg(input.value, true);
-  input.value = "";
-}
-
-document.getElementById("btn1").onclick = sendMsg;
 </script>
+
 </body>
 </html>
