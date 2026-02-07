@@ -1,245 +1,215 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Soapy Chat</title>
+<title>Soapysounds</title>
 
 <style>
-html,body{
-  height:100%;margin:0;font-family:system-ui;
-  background:radial-gradient(circle at top,#ff5ad6,#502070,#0b0314);
-  color:white;
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui;
+  background: radial-gradient(circle at center, #ff5ad6, #3a1c5a, #05010a);
+  color: white;
+  user-select: none;
 }
-#app{
-  width:720px;height:90vh;margin:20px auto;
-  background:rgba(8,8,20,.92);
-  border-radius:14px;box-shadow:0 0 50px #ff5ad688;
-  padding:10px;display:flex;flex-direction:column;gap:10px;
-}
-#topbar{font-size:20px;font-weight:bold;}
-#chat{
-  flex:1;overflow-y:auto;padding:12px;
-  background:rgba(0,0,0,.2);border-radius:10px;
-}
-.msg{margin-bottom:10px}
-.name{color:#ff90ff;font-weight:bold}
-img{max-width:280px;border-radius:10px;margin-top:6px}
-input,button{
-  background:#1a0f2a;border:1px solid #ff5ad688;
-  color:white;padding:8px;border-radius:8px;
-}
-button{
-  background:linear-gradient(135deg,#ff5ad6,#7a3cff);
-  cursor:pointer;
-}
-button.icon{width:40px;height:40px;padding:0;font-size:18px}
 
-/* ==== SoapySounds Window ==== */
-#soundWindow{
-  position:absolute;top:120px;left:120px;
-  width:300px;background:#0e0620;
-  border-radius:10px;box-shadow:0 0 30px #ff5ad699;
-  display:none;flex-direction:column;
+#window {
+  width: 420px;
+  height: 360px;
+  margin: auto;
+  margin-top: 60px;
+  background: rgba(12,12,30,0.95);
+  border-radius: 16px;
+  box-shadow: 0 0 40px #ff5ad688;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-#soundTitle{
-  background:#2a1040;
-  padding:6px 10px;
-  cursor:move;
-  display:flex;justify-content:space-between;
-  border-radius:10px 10px 0 0;
+
+#titlebar {
+  padding: 10px 14px;
+  font-weight: bold;
+  background: rgba(0,0,0,0.35);
 }
-#soundContent{padding:10px}
-.close{cursor:pointer;font-weight:bold}
+
+#content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+#audio {
+  width: 90%;
+  margin-bottom: 16px;
+}
+
+#controls {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+}
+
+button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #ff5ad6, #9b5cff);
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.15);
+}
+
+#drop {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  background: rgba(0,0,0,0.7);
+  z-index: 999;
+}
 </style>
 </head>
 
 <body>
-<div id="app">
-  <div id="topbar">Connection: ✅</div>
 
-  <div>
-    <button class="icon" onclick="openSoundWindow()">🔊</button>
-    <button class="icon" onclick="pickImage()">🖼️</button>
-    <input id="name" placeholder="Name">
-    <input id="text" placeholder="Message">
-    <button onclick="send()">Send</button>
-    <input id="img" type="file" accept="image/*" hidden>
+<div id="window">
+  <div id="titlebar">🫧 Soapysounds</div>
+
+  <div id="content">
+    <audio id="audio" controls></audio>
   </div>
 
-  <div id="chat"></div>
-</div>
-
-<!-- SoapySounds -->
-<div id="soundWindow">
-  <div id="soundTitle">
-    <span>SoapySounds</span>
-    <span class="close" onclick="closeSoundWindow()">✖</span>
-  </div>
-  <div id="soundContent">
-    <input type="file" id="audioFile" accept="audio/*"><br><br>
-    <audio id="audioPlayer" controls style="width:100%"></audio><br><br>
-    <button onclick="sendAudio()">Send Audio</button>
+  <div id="controls">
+    <!-- SCPACK buttons injected here -->
   </div>
 </div>
+
+<div id="drop">Drop SCPACK</div>
+
 <script>
-/* ===== ELEMENT REFERENCES ===== */
-const chat = document.getElementById("chat");
-const connectionEl = document.getElementById("topbar");
+/* ======================
+   BASIC AUDIO + SOCKET
+====================== */
 
-const nameInput = document.getElementById("name");
-const textInput = document.getElementById("text");
-const imgInput = document.getElementById("img");
+const audio = document.getElementById("audio");
+let ws = null;
 
-const soundWindow = document.getElementById("soundWindow");
-const soundTitle = document.getElementById("soundTitle");
-const audioFile = document.getElementById("audioFile");
-const audioPlayer = document.getElementById("audioPlayer");
+// Optional websocket hookup
+// ws = new WebSocket("wss://soapychat.onrender.com/ws");
 
-/* ===== STATE ===== */
-let ws;
-let joined = false;
-let currentAudio = null;
+/* ======================
+   SCPACK LOADER
+====================== */
 
-/* ===== CONNECT ===== */
-function connect() {
-  ws = new WebSocket(
-    `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`
-  );
+const drop = document.getElementById("drop");
 
-  ws.onopen = () => {
-    connectionEl.textContent = "Connection: ✅";
-    connectionEl.style.color = "#00ff88";
-  };
+document.addEventListener("dragover", e => {
+  e.preventDefault();
+  drop.style.display = "flex";
+});
 
-  ws.onclose = () => {
-    connectionEl.textContent = "Connection: 🚫 (Reload page)";
-    connectionEl.style.color = "#ff4444";
-  };
+document.addEventListener("dragleave", () => {
+  drop.style.display = "none";
+});
 
-  ws.onmessage = e => {
-    const msg = JSON.parse(e.data);
-    if (msg.type === "history") {
-      msg.messages.forEach(addMessage);
-    } else {
-      addMessage(msg);
-    }
-  };
-}
-connect();
+document.addEventListener("drop", async e => {
+  e.preventDefault();
+  drop.style.display = "none";
 
-/* ===== CHAT RENDER ===== */
-function addMessage(msg) {
-  const d = document.createElement("div");
-  d.className = "msg";
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.name.endsWith(".scpack")) return;
 
-  if (msg.type === "image") {
-    d.innerHTML = `<span class="name">${msg.name}:</span><br>
-                   <img src="${msg.content}">`;
-  }
-  else if (msg.type === "audio") {
-    d.innerHTML = `
-      <span class="name">${msg.name}</span>
-      just sent an audio<br>
-      <button onclick='openAudio("${msg.content}")'>
-        🔊 Open in SoapySounds
-      </button>`;
-  }
-  else {
-    d.innerHTML = `<span class="name">${msg.name}:</span> ${msg.content}`;
+  const buf = await file.arrayBuffer();
+  const view = new DataView(buf);
+  let offset = 0;
+
+  function readString() {
+    const len = view.getUint8(offset++);
+    const str = new TextDecoder().decode(buf.slice(offset, offset + len));
+    offset += len;
+    return str;
   }
 
-  chat.appendChild(d);
-  chat.scrollTop = chat.scrollHeight;
-}
+  const magic = new TextDecoder().decode(buf.slice(0, 8));
+  if (magic !== "SCPACKSS") {
+    alert("Invalid Soapysounds SCPACK");
+    return;
+  }
 
-/* ===== SEND TEXT ===== */
-function send() {
-  if (!joined) {
+  offset = 9; // magic + version
+
+  /* ===== STYLE ===== */
+
+  document.body.style.background = readString();
+  document.getElementById("window").style.background = readString();
+  const btnColor = readString();
+  document.body.style.color = readString();
+
+  /* ===== EMOJIS ===== */
+
+  const emojiCount = view.getUint8(offset++);
+  window.SS_EMOJIS = [];
+  for (let i = 0; i < emojiCount; i++) {
+    SS_EMOJIS.push(readString());
+  }
+
+  /* ===== BUTTONS ===== */
+
+  const controls = document.getElementById("controls");
+  controls.innerHTML = "";
+
+  for (let i = 0; i < 3; i++) {
+    const label = readString();
+    const action = view.getUint8(offset++);
+
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.style.background = btnColor;
+    b.onclick = () => handleAction(action);
+    controls.appendChild(b);
+  }
+
+  console.log("🫧 Soapysounds SCPACK applied");
+});
+
+/* ======================
+   ACTION HANDLER
+====================== */
+
+function handleAction(id) {
+  // 1 = Play / Pause
+  if (id === 1) {
+    audio.paused ? audio.play() : audio.pause();
+  }
+
+  // 2 = Stop
+  if (id === 2) {
+    audio.pause();
+    audio.currentTime = 0;
+  }
+
+  // 3 = Send Audio
+  if (id === 3) {
+    if (!audio.src) return alert("No audio loaded");
+    if (!ws) return alert("WebSocket not connected");
+
     ws.send(JSON.stringify({
-      type: "join",
-      name: nameInput.value || "Anonymous"
+      type: "audio",
+      content: audio.src
     }));
-    nameInput.disabled = true;
-    joined = true;
-  }
-
-  if (textInput.value.trim()) {
-    ws.send(JSON.stringify({
-      type: "message",
-      content: textInput.value
-    }));
-    textInput.value = "";
   }
 }
-
-/* ===== IMAGE ===== */
-function pickImage() { imgInput.click(); }
-
-imgInput.onchange = () => {
-  const r = new FileReader();
-  r.onload = () => {
-    ws.send(JSON.stringify({
-      type: "image",
-      content: r.result
-    }));
-  };
-  r.readAsDataURL(imgInput.files[0]);
-};
-
-/* ===== SoapySounds ===== */
-function openSoundWindow() {
-  soundWindow.style.display = "flex";
-}
-
-function closeSoundWindow() {
-  soundWindow.style.display = "none";
-}
-
-audioFile.onchange = () => {
-  const r = new FileReader();
-  r.onload = () => {
-    currentAudio = r.result;
-    audioPlayer.src = currentAudio;
-  };
-  r.readAsDataURL(audioFile.files[0]);
-};
-
-function sendAudio() {
-  if (!currentAudio) return;
-
-  ws.send(JSON.stringify({
-    type: "audio",
-    content: currentAudio
-  }));
-
-  closeSoundWindow();
-}
-
-function openAudio(data) {
-  openSoundWindow();
-  audioPlayer.src = data;
-  audioPlayer.play();
-}
-
-/* ===== DRAG WINDOW ===== */
-let drag = false, dx = 0, dy = 0;
-
-soundTitle.onmousedown = e => {
-  drag = true;
-  dx = e.offsetX;
-  dy = e.offsetY;
-};
-
-document.onmousemove = e => {
-  if (!drag) return;
-  soundWindow.style.left = (e.pageX - dx) + "px";
-  soundWindow.style.top  = (e.pageY - dy) + "px";
-};
-
-document.onmouseup = () => drag = false;
 </script>
+
 </body>
 </html>
-
-
-
