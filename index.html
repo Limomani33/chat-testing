@@ -2,214 +2,207 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Soapysounds</title>
+<title>SoapyChat</title>
 
-<style>
+<style id="soapy-style">
+:root {
+  --main-color: #a855f7;
+  --bg-gradient: radial-gradient(circle at top, #ff5ad6, #502070, #0b0314);
+}
+
 html, body {
   margin: 0;
   height: 100%;
-  font-family: system-ui;
-  background: radial-gradient(circle at center, #ff5ad6, #3a1c5a, #05010a);
+  font-family: system-ui, sans-serif;
+  background: var(--bg-gradient);
   color: white;
-  user-select: none;
-}
-
-#window {
-  width: 420px;
-  height: 360px;
-  margin: auto;
-  margin-top: 60px;
-  background: rgba(12,12,30,0.95);
-  border-radius: 16px;
-  box-shadow: 0 0 40px #ff5ad688;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
 }
 
-#titlebar {
-  padding: 10px 14px;
-  font-weight: bold;
-  background: rgba(0,0,0,0.35);
-}
-
-#content {
-  flex: 1;
+#app {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
+  height: 100%;
 }
 
-#audio {
-  width: 90%;
-  margin-bottom: 16px;
+#chat {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
 }
 
-#controls {
+.msg {
+  margin-bottom: 8px;
+  background: rgba(255,255,255,0.08);
+  padding: 8px 12px;
+  border-radius: 12px;
+  max-width: 70%;
+}
+
+.me {
+  margin-left: auto;
+  background: var(--main-color);
+}
+
+#inputBar {
   display: flex;
-  gap: 10px;
   padding: 12px;
+  gap: 8px;
+  backdrop-filter: blur(10px);
+}
+
+input {
+  flex: 1;
+  border-radius: 999px;
+  border: none;
+  padding: 10px 14px;
+  outline: none;
 }
 
 button {
-  flex: 1;
-  padding: 10px;
   border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #ff5ad6, #9b5cff);
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: var(--main-color);
   color: white;
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
-}
-
-button:hover {
-  filter: brightness(1.15);
-}
-
-#drop {
-  position: fixed;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  background: rgba(0,0,0,0.7);
-  z-index: 999;
 }
 </style>
 </head>
 
 <body>
+<div id="app">
 
-<div id="window">
-  <div id="titlebar">🫧 Soapysounds</div>
+  <div id="chat"></div>
 
-  <div id="content">
-    <audio id="audio" controls></audio>
+  <div id="inputBar">
+    <button id="btn1">➤</button>
+    <button id="btn2">🖼️</button>
+    <button id="btn3">🎵</button>
+    <input id="msgInput" placeholder="Type something..." />
   </div>
 
-  <div id="controls">
-    <!-- SCPACK buttons injected here -->
-  </div>
 </div>
 
-<div id="drop">Drop SCPACK</div>
-
 <script>
-/* ======================
-   BASIC AUDIO + SOCKET
-====================== */
+const chat = document.getElementById("chat");
+const input = document.getElementById("msgInput");
 
-const audio = document.getElementById("audio");
-let ws = null;
+function addMsg(text, me=false) {
+  const d = document.createElement("div");
+  d.className = "msg" + (me ? " me" : "");
+  d.textContent = text;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+}
 
-// Optional websocket hookup
-// ws = new WebSocket("wss://soapychat.onrender.com/ws");
-
-/* ======================
-   SCPACK LOADER
-====================== */
-
-const drop = document.getElementById("drop");
-
-document.addEventListener("dragover", e => {
+// ============================
+// SCPACK LOADER
+// ============================
+document.body.addEventListener("dragover", e => e.preventDefault());
+document.body.addEventListener("drop", e => {
   e.preventDefault();
-  drop.style.display = "flex";
-});
-
-document.addEventListener("dragleave", () => {
-  drop.style.display = "none";
-});
-
-document.addEventListener("drop", async e => {
-  e.preventDefault();
-  drop.style.display = "none";
-
   const file = e.dataTransfer.files[0];
   if (!file || !file.name.endsWith(".scpack")) return;
-
-  const buf = await file.arrayBuffer();
-  const view = new DataView(buf);
-  let offset = 0;
-
-  function readString() {
-    const len = view.getUint8(offset++);
-    const str = new TextDecoder().decode(buf.slice(offset, offset + len));
-    offset += len;
-    return str;
-  }
-
-  const magic = new TextDecoder().decode(buf.slice(0, 8));
-  if (magic !== "SCPACKSS") {
-    alert("Invalid Soapysounds SCPACK");
-    return;
-  }
-
-  offset = 9; // magic + version
-
-  /* ===== STYLE ===== */
-
-  document.body.style.background = readString();
-  document.getElementById("window").style.background = readString();
-  const btnColor = readString();
-  document.body.style.color = readString();
-
-  /* ===== EMOJIS ===== */
-
-  const emojiCount = view.getUint8(offset++);
-  window.SS_EMOJIS = [];
-  for (let i = 0; i < emojiCount; i++) {
-    SS_EMOJIS.push(readString());
-  }
-
-  /* ===== BUTTONS ===== */
-
-  const controls = document.getElementById("controls");
-  controls.innerHTML = "";
-
-  for (let i = 0; i < 3; i++) {
-    const label = readString();
-    const action = view.getUint8(offset++);
-
-    const b = document.createElement("button");
-    b.textContent = label;
-    b.style.background = btnColor;
-    b.onclick = () => handleAction(action);
-    controls.appendChild(b);
-  }
-
-  console.log("🫧 Soapysounds SCPACK applied");
+  loadSCPACK(file);
 });
 
-/* ======================
-   ACTION HANDLER
-====================== */
-
-function handleAction(id) {
-  // 1 = Play / Pause
-  if (id === 1) {
-    audio.paused ? audio.play() : audio.pause();
-  }
-
-  // 2 = Stop
-  if (id === 2) {
-    audio.pause();
-    audio.currentTime = 0;
-  }
-
-  // 3 = Send Audio
-  if (id === 3) {
-    if (!audio.src) return alert("No audio loaded");
-    if (!ws) return alert("WebSocket not connected");
-
-    ws.send(JSON.stringify({
-      type: "audio",
-      content: audio.src
-    }));
-  }
+function loadSCPACK(file) {
+  const reader = new FileReader();
+  reader.onload = () => parseSCPACK(reader.result);
+  reader.readAsArrayBuffer(file);
 }
-</script>
 
+function parseSCPACK(buf) {
+  const dv = new DataView(buf);
+  let i = 0;
+
+  function readStr() {
+    const len = dv.getUint8(i++);
+    let s = "";
+    for (let j = 0; j < len; j++) {
+      s += String.fromCharCode(dv.getUint8(i++));
+    }
+    return decodeURIComponent(escape(s));
+  }
+
+  // Header
+  const magic = String.fromCharCode(...new Uint8Array(buf.slice(0,8)));
+  i = 9;
+  if (!magic.startsWith("SCPACK")) return alert("Invalid SCPACK");
+
+  // Gradients
+  const gCount = dv.getUint8(i++);
+  const gradients = [];
+  for (let g = 0; g < gCount; g++) gradients.push(readStr());
+
+  // Emojis
+  const eCount = dv.getUint8(i++);
+  const emojis = [];
+  for (let e = 0; e < eCount; e++) emojis.push(readStr());
+
+  // Color
+  const color = readStr();
+
+  // Buttons
+  const bCount = dv.getUint8(i++);
+  const buttons = [];
+  for (let b = 0; b < bCount; b++) {
+    buttons.push({
+      label: readStr(),
+      action: dv.getUint8(i++)
+    });
+  }
+
+  applyTheme(gradients, emojis, color, buttons);
+}
+
+function applyTheme(gradients, emojis, color, buttons) {
+  document.documentElement.style.setProperty("--bg-gradient", gradients[0]);
+  document.documentElement.style.setProperty("--main-color", color);
+
+  // Apply emojis
+  const btnEls = [
+    document.getElementById("btn1"),
+    document.getElementById("btn2"),
+    document.getElementById("btn3")
+  ];
+
+  emojis.forEach((e, idx) => {
+    if (btnEls[idx]) btnEls[idx].textContent = e;
+  });
+
+  // Wire buttons
+  btnEls.forEach(b => b.onclick = null);
+
+  buttons.forEach((b, idx) => {
+    const el = btnEls[idx];
+    if (!el) return;
+    el.textContent = b.label;
+
+    if (b.action === 1) {
+      el.onclick = sendMsg;
+    } else if (b.action === 2) {
+      el.onclick = () => addMsg("🖼️ Image action triggered");
+    } else if (b.action === 3) {
+      el.onclick = () => addMsg("🎵 SoapySound triggered");
+    }
+  });
+
+  addMsg("🫧 SCPACK Applied!");
+}
+
+// ============================
+// ACTIONS
+// ============================
+function sendMsg() {
+  if (!input.value) return;
+  addMsg(input.value, true);
+  input.value = "";
+}
+
+document.getElementById("btn1").onclick = sendMsg;
+</script>
 </body>
 </html>
