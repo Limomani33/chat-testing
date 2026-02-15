@@ -1,230 +1,175 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>SoapyChat</title>
+<title>Soapy Chat</title>
 
 <style>
-:root {
-  --accent: #a855f7;
-  --bg: linear-gradient(135deg, #1e0033, #3a0066);
-  --bubble: rgba(255,255,255,0.1);
-  --button: #7c3aed;
+html,body{
+  height:100%;
+  margin:0;
+  background:#0b0507;
+  font-family:system-ui;
+  color:#ffdddd;
 }
 
-body {
-  margin: 0;
-  font-family: system-ui, sans-serif;
-  background: var(--bg);
-  color: white;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
+#app{
+  width:720px;
+  height:90vh;
+  margin:20px auto;
+  background:#140709;
+  border:2px solid #ff3333;
+  padding:12px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  clip-path:polygon(0 0,100% 0,100% 100%,20px 100%,0 calc(100% - 20px));
 }
 
-header {
-  padding: 14px 18px;
-  font-size: 22px;
-  font-weight: 700;
+#chat{
+  flex:1;
+  overflow-y:auto;
+  padding:10px;
+  background:#1a0a0c;
 }
 
-#status {
-  font-size: 14px;
-  opacity: 0.85;
+.msg{margin-bottom:8px}
+.name{color:#ff5555;font-weight:bold}
+
+input,button{
+  background:#1a0a0c;
+  color:#ffdddd;
+  border:1px solid #ff3333;
+  padding:8px;
+  clip-path:polygon(0 0,100% 0,100% 100%,15px 100%,0 calc(100% - 15px));
 }
 
-#chat {
-  flex: 1;
-  overflow-y: auto;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+button{
+  cursor:pointer;
+  background:linear-gradient(135deg,#ff3333,#7a0000);
 }
 
-.msg {
-  background: var(--bubble);
-  padding: 10px 14px;
-  border-radius: 14px;
-  max-width: 70%;
+#error{
+  color:#ff4444;
+  font-weight:bold;
 }
 
-.name {
-  font-size: 12px;
-  opacity: 0.7;
+/* MODAL */
+#modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.8);
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
-img.chat-img {
-  max-width: 100%;
-  border-radius: 10px;
-  margin-top: 6px;
+#modalBox{
+  background:#140709;
+  border:2px solid #ff3333;
+  padding:20px;
+  width:360px;
+  clip-path:polygon(0 0,100% 0,100% 100%,20px 100%,0 calc(100% - 20px));
 }
-
-#bar {
-  display: flex;
-  gap: 8px;
-  padding: 10px;
-  background: rgba(0,0,0,0.25);
-}
-
-#bar input[type="text"] {
-  flex: 1;
-  border-radius: 10px;
-  border: none;
-  padding: 10px;
-}
-
-button {
-  border: none;
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 18px;
-  background: var(--button);
-  color: white;
-  cursor: pointer;
-}
+a{color:#ff7777}
 </style>
 </head>
 
 <body>
 
-<header>
-  SoapyChat
-  <div id="status">🫧 Connecting…</div>
-</header>
-
-<div id="chat"></div>
-
-<div id="bar">
-  <button id="imgBtn">🖼️</button>
-  <input id="text" placeholder="Message">
-  <button id="sendBtn">➡️</button>
+<div id="modal">
+  <div id="modalBox">
+    <h3 id="modalTitle">Enter your PHID</h3>
+    <input id="phidInput" placeholder="PHID"><br><br>
+    <button onclick="submitPHID()">Continue</button><br><br>
+    <a href="https://phid-accpanel.onrender.com" target="_blank">
+      Sign up / Sign in
+    </a>
+    <div id="modalMsg"></div>
+  </div>
 </div>
 
-<input id="imgInput" type="file" accept="image/*" hidden>
+<div id="app" style="display:none">
+  <div>
+    <input id="text" placeholder="Message (max 300 chars)">
+    <button onclick="send()">Send</button>
+    <span id="error"></span>
+  </div>
+  <div id="chat"></div>
+</div>
 
 <script>
-/* =====================
-   WEBSOCKET
-===================== */
-const ws = new WebSocket(
-  (location.protocol === "https:" ? "wss://" : "ws://") +
-  location.host + "/ws"
-);
-
 const chat = document.getElementById("chat");
-const statusEl = document.getElementById("status");
+const errorEl = document.getElementById("error");
+const modal = document.getElementById("modal");
+const modalMsg = document.getElementById("modalMsg");
 
-const name = prompt("Name") || "Anonymous";
+let ws;
+let username = localStorage.getItem("username");
 
-ws.onopen = () => {
-  statusEl.textContent = "🫧 Connected";
-  ws.send(JSON.stringify({ type: "join", name }));
-};
+function startChat(){
+  modal.style.display="none";
+  document.getElementById("app").style.display="flex";
 
-ws.onclose = () => {
-  statusEl.textContent = "🚫 Disconnected (Reload page)";
-};
+  ws = new WebSocket(
+    `${location.protocol==="https:"?"wss":"ws"}://${location.host}/ws`
+  );
 
-ws.onmessage = e => {
-  const data = JSON.parse(e.data);
-  if (data.type === "history") {
-    data.messages.forEach(addMessage);
-  } else {
-    addMessage(data);
-  }
-};
-
-function addMessage(data) {
-  const div = document.createElement("div");
-  div.className = "msg";
-
-  div.innerHTML = `<div class="name">${data.name}</div>`;
-
-  if (data.type === "message") {
-    div.innerHTML += `<div>${data.content}</div>`;
-  }
-
-  if (data.type === "image") {
-    const img = document.createElement("img");
-    img.src = data.content;
-    img.className = "chat-img";
-    div.appendChild(img);
-  }
-
-  chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-/* =====================
-   SEND TEXT
-===================== */
-document.getElementById("sendBtn").onclick = () => {
-  const t = text.value.trim();
-  if (!t) return;
-  ws.send(JSON.stringify({ type: "message", content: t }));
-  text.value = "";
-};
-
-/* =====================
-   SEND IMAGE
-===================== */
-imgBtn.onclick = () => imgInput.click();
-
-imgInput.onchange = () => {
-  const file = imgInput.files[0];
-  if (!file) return;
-
-  const r = new FileReader();
-  r.onload = () => {
-    ws.send(JSON.stringify({
-      type: "image",
-      content: r.result
-    }));
-  };
-  r.readAsDataURL(file);
-};
-
-/* =====================
-   SCPACK LOADER
-===================== */
-document.addEventListener("dragover", e => e.preventDefault());
-document.addEventListener("drop", e => {
-  e.preventDefault();
-  const f = e.dataTransfer.files[0];
-  if (!f || !f.name.endsWith(".SCPACK")) return;
-
-  const r = new FileReader();
-  r.onload = () => applyPack(r.result);
-  r.readAsArrayBuffer(f);
-});
-
-function applyPack(buf) {
-  const d = new DataView(buf);
-  let o = 0;
-
-  const readStr = () => {
-    const len = d.getUint16(o); o += 2;
-    let s = "";
-    for (let i=0;i<len;i++) {
-      s += String.fromCharCode(d.getUint8(o++));
-    }
-    return s;
+  ws.onopen = () => {
+    ws.send(JSON.stringify({type:"join",name:username}));
   };
 
-  const gradients = readStr();
-  const accent = readStr();
-  const sendEmoji = readStr();
-  const imgEmoji = readStr();
-  const buttonColor = readStr();
-
-  document.documentElement.style.setProperty("--bg", gradients);
-  document.documentElement.style.setProperty("--accent", accent);
-  document.documentElement.style.setProperty("--button", buttonColor);
-
-  sendBtn.textContent = sendEmoji;
-  imgBtn.textContent = imgEmoji;
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if(m.type==="history") m.messages.forEach(add);
+    else if(m.type==="error") errorEl.textContent=m.message;
+    else add(m);
+  };
 }
+
+function add(m){
+  const d=document.createElement("div");
+  d.className="msg";
+  d.innerHTML=`<span class="name">${m.name}:</span> ${m.content}`;
+  chat.appendChild(d);
+  chat.scrollTop=chat.scrollHeight;
+}
+
+function send(){
+  const t=document.getElementById("text");
+  if(t.value.length>300){
+    errorEl.textContent="Max 300 characters";
+    return;
+  }
+  ws.send(JSON.stringify({type:"message",content:t.value}));
+  t.value="";
+  errorEl.textContent="";
+}
+
+async function submitPHID(){
+  const phid=document.getElementById("phidInput").value;
+  const r=await fetch("/check_phid",{method:"POST",body:JSON.stringify({phid})});
+  const d=await r.json();
+
+  if(!d.ok){
+    modalMsg.textContent="Invalid PHID";
+    return;
+  }
+
+  modalMsg.innerHTML=`
+    Is this you?<br>
+    Username: <b>${d.username}</b><br><br>
+    <button onclick="confirmUser('${d.username}')">Yes</button>
+  `;
+}
+
+function confirmUser(u){
+  localStorage.setItem("username",u);
+  username=u;
+  startChat();
+}
+
+if(username) startChat();
 </script>
 
 </body>
